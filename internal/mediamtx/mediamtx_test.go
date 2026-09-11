@@ -480,3 +480,101 @@ func TestGenerateSelfSignedCert(t *testing.T) {
 		t.Error("cert validity window doesn't include now")
 	}
 }
+
+// A closed segment lists its parts AND its EXTINF. They are the same media.
+//
+// This shape is what a live gohlslib playlist actually looks like, and no
+// fixture in this file carried it until 2026-09-11: every part in the older
+// tests belongs to the trailing open segment, which is the one case the old
+// parser got right. Counting both inflated RealHistory, and RealHistory is the
+// only input to the attach gate in internal/server, so the room declared itself
+// ready with less contiguous real media than the target asks for.
+func TestParseHLSMediaPlaylistCountsAClosedSegmentOnce(t *testing.T) {
+	body := `#EXTM3U
+#EXT-X-VERSION:10
+#EXT-X-TARGETDURATION:1
+#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000
+#EXT-X-PART-INF:PART-TARGET=0.17100
+#EXT-X-MEDIA-SEQUENCE:353
+#EXT-X-PROGRAM-DATE-TIME:2026-09-11T04:52:02.567+02:00
+#EXTINF:0.51200,
+seg353.mp4
+#EXT-X-PROGRAM-DATE-TIME:2026-09-11T04:52:03.079+02:00
+#EXTINF:0.51200,
+seg354.mp4
+#EXT-X-PROGRAM-DATE-TIME:2026-09-11T04:52:03.591+02:00
+#EXT-X-PART:DURATION=0.17067,URI="part1044.mp4",INDEPENDENT=YES
+#EXT-X-PART:DURATION=0.17067,URI="part1045.mp4",INDEPENDENT=YES
+#EXT-X-PART:DURATION=0.17067,URI="part1046.mp4",INDEPENDENT=YES
+#EXTINF:0.51200,
+seg355.mp4
+#EXT-X-PROGRAM-DATE-TIME:2026-09-11T04:52:04.103+02:00
+#EXT-X-PART:DURATION=0.17067,URI="part1047.mp4",INDEPENDENT=YES
+#EXT-X-PART:DURATION=0.17067,URI="part1048.mp4",INDEPENDENT=YES
+#EXT-X-PART:DURATION=0.17067,URI="part1049.mp4",INDEPENDENT=YES
+#EXTINF:0.51200,
+seg356.mp4
+#EXT-X-PART:DURATION=0.17067,URI="part1050.mp4",INDEPENDENT=YES
+#EXT-X-PRELOAD-HINT:TYPE=PART,URI="part1051.mp4"
+`
+	state := parseHLSMediaPlaylist(body)
+
+	// Four closed segments plus one part of the segment still open:
+	// 4 x 0.512 + 0.17067. Counting seg355 and seg356 twice would have
+	// reported 3.2110, a full second of media that is not there.
+	const want = 4*0.51200 + 0.17067
+	if math.Abs(state.RealHistory-want) > 0.000001 {
+		t.Fatalf("real history = %v, want %v (a closed segment must not be counted as both its parts and its EXTINF)",
+			state.RealHistory, want)
+	}
+	if state.GapHistory != 0 {
+		t.Fatalf("gap history = %v, want 0", state.GapHistory)
+	}
+	if state.PartHoldBack != 0.9 || state.PartTarget != 0.171 {
+		t.Fatalf("hold-back/part-target = %v/%v", state.PartHoldBack, state.PartTarget)
+	}
+}
+
+// Dropping a closed segment's parts must not drop the fact that it was a gap.
+// A muxer is free to mark the parts GAP=YES without also emitting a standalone
+// EXT-X-GAP, and a missed gap is worse than a double count: RealHistory sums
+// backwards until it meets one, so losing it would let the total run straight
+// across synthetic media and call it real.
+func TestParseHLSMediaPlaylistKeepsAGapMarkedOnlyOnParts(t *testing.T) {
+	body := `#EXTM3U
+#EXT-X-MEDIA-SEQUENCE:0
+#EXT-X-PART:DURATION=0.25000,URI="gap0.mp4",GAP=YES
+#EXT-X-PART:DURATION=0.25000,URI="gap1.mp4",GAP=YES
+#EXTINF:0.50000,
+gapseg.mp4
+#EXT-X-PART:DURATION=0.25000,URI="real0.mp4"
+#EXT-X-PART:DURATION=0.25000,URI="real1.mp4"
+#EXTINF:0.50000,
+realseg.mp4
+`
+	state := parseHLSMediaPlaylist(body)
+	if math.Abs(state.RealHistory-0.5) > 0.000001 {
+		t.Fatalf("real history = %v, want 0.5: only the segment after the gap is real", state.RealHistory)
+	}
+	if math.Abs(state.GapHistory-0.5) > 0.000001 {
+		t.Fatalf("gap history = %v, want 0.5: the gap survived being described only on its parts", state.GapHistory)
+	}
+}
+
+// The trailing segment has no EXTINF yet, so its parts ARE the media and must
+// still count. This is the case the old parser handled correctly and the fix
+// must not break.
+func TestParseHLSMediaPlaylistStillCountsTheOpenSegmentsParts(t *testing.T) {
+	body := `#EXTM3U
+#EXT-X-MEDIA-SEQUENCE:0
+#EXTINF:0.50000,
+seg0.mp4
+#EXT-X-PART:DURATION=0.25000,URI="part0.mp4"
+#EXT-X-PART:DURATION=0.25000,URI="part1.mp4"
+#EXT-X-PRELOAD-HINT:TYPE=PART,URI="part2.mp4"
+`
+	state := parseHLSMediaPlaylist(body)
+	if math.Abs(state.RealHistory-1.0) > 0.000001 {
+		t.Fatalf("real history = %v, want 1.0 (one closed segment plus two open parts)", state.RealHistory)
+	}
+}

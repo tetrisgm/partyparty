@@ -459,11 +459,39 @@ type hlsTimelineUnit struct {
 	gap      bool
 }
 
+// parseHLSMediaPlaylist measures how much CONTIGUOUS REAL media sits at the live
+// edge, which is what the attach gate in internal/server rests on.
+//
+// The timeline is built in playlist order and then summed backwards from the
+// end until it meets a gap, so every unit must represent media exactly once.
+// A low-latency playlist makes that easy to get wrong: gohlslib lists a
+// segment's EXT-X-PART lines AND, once that segment closes, its EXTINF. From a
+// live playlist on 2026-09-11:
+//
+//	#EXT-X-PROGRAM-DATE-TIME:2026-09-11T04:52:03.591+02:00
+//	#EXT-X-PART:DURATION=0.17067,URI="..._part1044.mp4",INDEPENDENT=YES
+//	#EXT-X-PART:DURATION=0.17067,URI="..._part1045.mp4",INDEPENDENT=YES
+//	#EXT-X-PART:DURATION=0.17067,URI="..._part1046.mp4",INDEPENDENT=YES
+//	#EXTINF:0.51200,
+//	..._seg355.mp4
+//
+// Counting both put that half second in twice. On a real playlist carrying two
+// such segments it inflated RealHistory by about a second, so the room declared
+// itself ready with a second less real media than the target asks for and an
+// early guest could attach nearer the synthetic GAP prefix than intended.
+//
+// A segment's parts and its EXTINF are the same media. The EXTINF is
+// authoritative once it arrives, so closing a segment DISCARDS the parts that
+// described it. Parts only stand on their own for the trailing segment that has
+// not closed yet, which is real media the playlist has no EXTINF for.
 func parseHLSMediaPlaylist(body string) HLSReadiness {
 	var state HLSReadiness
 	var units []hlsTimelineUnit
 	pendingDuration := -1.0
 	pendingGap := false
+	// How many trailing units in `units` are parts of the segment currently
+	// being described, and therefore superseded the moment it closes.
+	openParts := 0
 
 	for _, raw := range strings.Split(body, "\n") {
 		line := strings.TrimSpace(raw)
@@ -487,8 +515,24 @@ func parseHLSMediaPlaylist(body string) HLSReadiness {
 					duration: duration,
 					gap:      strings.EqualFold(playlistAttribute(line, "GAP"), "YES"),
 				})
+				openParts++
 			}
 		case line != "" && !strings.HasPrefix(line, "#") && pendingDuration >= 0:
+			// This URI closes the segment the preceding parts belonged to. Drop
+			// them in favour of the EXTINF, but carry their gap flag across
+			// first: a muxer that marks the parts GAP=YES without also emitting
+			// a standalone EXT-X-GAP would otherwise lose the gap entirely, and
+			// a missed gap is worse than a double count because RealHistory
+			// would then sum straight across it.
+			if openParts > 0 {
+				for _, part := range units[len(units)-openParts:] {
+					if part.gap {
+						pendingGap = true
+					}
+				}
+				units = units[:len(units)-openParts]
+			}
+			openParts = 0
 			units = append(units, hlsTimelineUnit{duration: pendingDuration, gap: pendingGap})
 			pendingDuration = -1
 			pendingGap = false
