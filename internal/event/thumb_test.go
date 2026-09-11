@@ -64,18 +64,29 @@ esac
 		t.Fatal("thumb job was not queued")
 	}
 
+	// Wait on the POINTER, not on the file.
+	//
+	// runThumbWorker writes the thumbnail and only then calls SetMediaThumb, and
+	// that order is deliberate: a feed entry pointing at a file that does not
+	// exist yet would show every guest a broken image. It does mean ThumbPath
+	// succeeds slightly before the feed carries the pointer, so waiting on the
+	// file and asserting on the feed is a race in the test. It failed under
+	// -race, where the window is wider, while passing without it.
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if p, ok := st.ThumbPath(m.ID); ok {
-			if filepath.Base(p) != m.ID+".jpg" {
-				t.Fatalf("thumb path = %q, want <id>.jpg", p)
-			}
-			posts, _, _ := st.Feed(0)
-			if len(posts) != 1 || len(posts[0].Media) != 1 {
-				t.Fatalf("feed posts = %#v", posts)
-			}
+		posts, _, _ := st.Feed(0)
+		if len(posts) == 1 && len(posts[0].Media) == 1 && posts[0].Media[0].Thumb != "" {
 			if got, want := posts[0].Media[0].Thumb, "/media/thumb/"+m.ID; got != want {
 				t.Fatalf("Media.Thumb = %q, want %q", got, want)
+			}
+			// The file the pointer names must already be there. This is the half
+			// of the ordering that would actually hurt a guest.
+			p, ok := st.ThumbPath(m.ID)
+			if !ok {
+				t.Fatal("the feed points at a thumbnail that does not exist")
+			}
+			if filepath.Base(p) != m.ID+".jpg" {
+				t.Fatalf("thumb path = %q, want <id>.jpg", p)
 			}
 			return
 		}

@@ -112,8 +112,24 @@ async function measure(playwright, base, kind) {
   // Exercise Show QR and confirm whether it causes any additional vendor load.
   // QR is eager for reliability, so this should normally be zero. Use a
   // programmatic click because the engagement gate sits above the fixed button.
+  //
+  // The id here was 'shareBtn', which has never existed on this page: the
+  // controls are qrBtn and nativeShareBtn. The `if (b)` guard swallowed it, so
+  // clickBytes was unconditionally 0 and the bench printed "+0KB" whether the
+  // QR vendor script was eager, lazy or deleted. The one durable guard against
+  // vendor bytes creeping back onto the join path measured nothing at all.
+  // It now fails loudly instead, because a bench that cannot find its own
+  // button must not report a number.
   const before = vendor.length;
-  await page.evaluate(() => { const b = document.getElementById('shareBtn'); if (b) b.click(); }).catch(() => {});
+  const clicked = await page.evaluate(() => {
+    const b = document.getElementById('qrBtn');
+    if (!b) return false;
+    b.click();
+    return true;
+  }).catch(() => false);
+  if (!clicked) {
+    throw new Error('perf-bench could not find #qrBtn on the guest page: the click measurement is meaningless');
+  }
   await page.waitForTimeout(600);
   const afterClick = vendor.slice(before);
   const clickBytes = afterClick.reduce((a, v) => a + v.bytes, 0);

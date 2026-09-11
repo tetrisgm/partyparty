@@ -89,15 +89,41 @@ network settings, or require Screen Recording.
 
 ## Build and verify
 
+The full gate, in the order it is worth running:
+
 ```sh
 go build ./...
-go vet ./...
+go build -tags bundle ./...        # the variant that actually ships
+go vet -tags bundle ./...
+go vet -tags embedhelpers ./...
 go test ./...
-cd app && swift build
-cd cloudflare && node test/smoke.mjs
-scripts/build-app.sh
-scripts/build-standalone.sh
+go test -race ./...
+npm test                           # source and render checks, seconds
+npm run gate                       # the above plus the real browser stream E2E
+cd app && swift build && swift test
+cd cloudflare && node test/smoke.mjs && npx wrangler deploy --dry-run
 ```
+
+`go build ./...` on its own compiles only the runtime variant. The app ships
+with `bundle` and `embedhelpers`, so a build that never vets those tags has not
+vetted what users run.
+
+`npm test` is source-and-render only. `npm run gate` adds
+`scripts/stream-e2e.mjs`, which builds the Go server, starts a real MediaMTX and
+a real ffmpeg on throwaway ports, and drives the real guest page in a headless
+browser. It is the only check that asserts the shipping playlist shape, so a run
+that skips it proves nothing about the stream.
+
+Playback positioning is not covered by any of the above, because none of them
+can hear AVPlayer:
+
+```sh
+npm run soak:lab                   # every playlist tier, real AVPlayers, throwaway stack
+scripts/soak-playback.sh <url> 10  # one real stream, ten minutes, keep the log
+```
+
+See `docs/receipts/README.md` for what those numbers mean and which ones are
+evidence. Do not run either while the Mac is broadcasting.
 
 `scripts/build-app.sh` creates the sandboxed Mac App Store app.
 `scripts/build-standalone.sh` creates the separate Developer ID beta. See
