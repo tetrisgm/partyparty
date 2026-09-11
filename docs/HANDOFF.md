@@ -556,7 +556,7 @@ non-negotiable had no tests at all.
   pins the origin by hand has no broker, so reach detection never asks for a
   push and the configured origin receives nothing.
 
-### Found, evidenced, deliberately NOT fixed: RealHistory double-counts
+### Fixed: RealHistory double-counted a closed segment
 
 `internal/mediamtx/mediamtx.go` builds its timeline by appending one unit per
 `#EXT-X-PART:` line AND one per closed segment URI. A live playlist from the
@@ -579,12 +579,124 @@ means the room declares itself ready with about a second less contiguous real
 media than the three-second target actually requires, so an early guest can
 attach closer to the synthetic GAP prefix than intended.
 
-The fix is small: skip parts belonging to a segment that the playlist has
-already closed with an `EXTINF`. It is not made here. It changes when a player
-is allowed to attach, which is audio-path behaviour, and `AGENTS.md` gates that
-on the pre-upload soak and a supervised go-live test. No set was scheduled this
-session. A fixture built from the real shape above, in
-`internal/mediamtx/mediamtx_test.go`, is the place to start.
+Fixed: closing a segment now discards the parts that described it, because the
+`EXTINF` is authoritative once it arrives. Parts still stand on their own for
+the trailing segment that has not closed yet, which is real media the playlist
+has no `EXTINF` for. A closed segment's gap flag is carried across from its
+parts before they are dropped, because a muxer may mark the parts `GAP=YES`
+without emitting a standalone `EXT-X-GAP`, and a missed gap is worse than a
+double count: `RealHistory` sums backwards until it meets one.
+
+Three fixtures in `internal/mediamtx/mediamtx_test.go` cover it, built from the
+live playlist above. The old parser reports 3.2110 on the first of them where
+the truth is 2.2187, and 3.243 is the exact number the browser E2E printed on
+every run before this change. The readiness gate now needs the full three
+seconds of real media it always claimed to, so it opens later and a guest
+attaches with more real media behind them. Direction of travel is the safe one:
+the gate became stricter, not looser. No geometry moved, and the full browser
+E2E passes, including its readiness assertion.
+
+## Second pass: fixed, refuted, and still gated (2026-09-11)
+
+Each of these was adversarially verified before being acted on.
+
+### Fixed: the guest join path stopped downloading what it throws away
+
+`web/listener.html` hard-coded `src="/covers/hero.jpg"` on the hero image, and
+the real cover was assigned later from the feed. `web/dj.html` picks a random
+index out of 51 curated covers when localStorage is empty, so roughly 98% of
+fresh consoles land on something that is not `hero.jpg`. Every guest at every
+one of those parties downloaded 108,201 bytes of `hero.jpg`, discarded it, and
+only then began fetching the cover they were going to see, while the first HLS
+segments competed for the same connection.
+
+The cover is now injected server-side in `serveWeb`, the same way `dj.html`
+already receives its guest URL, so the preload scanner fetches the right image
+at parse time. The element keeps its eager, high-priority fetch: it is the
+above-fold LCP image and lazy loading it would delay the join, not speed it up.
+The value is HTML-escaped, which is load-bearing rather than decorative:
+`normalizeCoverRef` constrains a cover to `/covers/<basename>.<known ext>` but
+does not forbid a quote in the basename. Two tests cover it, including one
+asserting no template placeholder can ever reach a guest.
+
+Also: `/vendor/qrcode.min.js` now loads with `defer`, keeping its eager
+high-priority fetch while no longer stopping the parser in front of the audio
+element and the 200KB inline script. And the two Now Playing artwork slots no
+longer carry a parse-time `src="/art-512.png"` for a slot that stays hidden
+until a track is recognised; the file remains the error fallback and the
+mediaSession artwork.
+
+Verified against a running server: a default room serves `/covers/hero.jpg`, a
+room with a chosen cover serves that cover directly, zero parse-time
+`/art-512.png` requests, and the QR script carries `defer`.
+
+### Fixed: the App Store verifier had a dead guard and an unguarded key set
+
+`scripts/verify-app-store.sh` tested for quarantine with the ERE
+`com\\.apple\\.quarantine:`, which demands a literal backslash after `com` and
+after `apple`. `xattr` output never contains one, so the guard could not match
+anything and had never fired. Because the only other quarantine check lives in
+`verify-app-store-package.sh` over the expanded package, a build verified
+through this script alone had no quarantine check at all.
+
+The same script asserted an exact entitlement SET for the helpers and for
+ppcapture but only asked "is this key present" for the main app, so any extra
+key passed every gate. That includes `com.apple.developer.shazamkit`, which this
+handoff records as fatal at launch, and `com.apple.security.get-task-allow`,
+which is an automatic App Review rejection. The main app now has a set check
+against an allowlist that includes the two keys `xcodebuild -exportArchive`
+injects, plus a named check for the ShazamKit entitlement so the failure carries
+its reason forward.
+
+All three now fire, tested against a real ad-hoc-signed bundle built with
+`make app`: a quarantine xattr fails, a speculative ShazamKit entitlement fails
+with the launch-crash explanation, an added `get-task-allow` fails by name, and
+the clean bundle still verifies as 125.49 build 271. Nothing was archived,
+exported, uploaded or submitted.
+
+### Fixed: a status that said "reconnecting" when nothing was
+
+`reattach` set the status before attempting the attachment, then returned early
+if `attachSafe()` was false, leaving the page stranded on a word no later event
+clears. The status now goes up only once an attachment has actually been made.
+The throwing path is untouched, because `attachSafe` already sets "player error
+- reload the page", which is more useful than anything `reattach` would write.
+
+### REFUTED: the drift-correction cooldown is not spending a slot
+
+A finding claimed `considerNativeOutlier` commits and doubles the cooldown
+before calling `reattach`, so a correction that never happened still spends a
+slot. **There are no slots.** `outlierReattaches` is a log counter that nothing
+reads as a gate; the budget it once was, `outlierReattaches >=
+OUTLIER_MAX_REATTACHES`, was deleted in `14c191f` on 2026-08-04, the commit that
+fixed the 16.7 s incident. Of the three early returns in `reattach`, one is
+unreachable from this caller and one means no attachment was possible at all.
+The remaining one fires only when some other reattach landed less than 2.5
+seconds earlier, which is the same corrective action the outlier wanted. Worst
+case is one extra spacing step, bounded at 60 s and snapped back to 15 s by the
+first measurement inside 750 ms of target. **Do not reorder this.** It is the
+deliberate shape of the commit that fixed the incident the contract cites.
+
+### Still gated: the ppcapture fade is real and must not be patched blind
+
+The 5 ms silence-to-music fade is applied only in the planar-buffer branch. The
+single-interleaved-buffer branch never reads or clears `fadePending`, so on a
+host with that tap layout every splice back from wall-clock filler is an
+unfaded click, and the flag latches true forever after the first dead-air
+episode. It is all-or-nothing per host, not intermittent: a process sees one tap
+format for its whole life and the parent restarts capture on a device change.
+
+The omission is structural, not a forgotten line: the interleaved branch pushes
+the HAL's own input pointer straight into the ring and has no copy to ramp.
+Adding a `fadePending` read there without a pre-allocated scratch buffer would
+mean writing into HAL memory on the realtime thread, which is worse than the
+click it removes.
+
+Step zero is not a fix at all. Extend the one-time stderr `FORMAT` announcement
+with the observed buffer layout so it is known whether any Mac in the fleet even
+takes that branch. If none does, the correct outcome is a comment and no code
+change. This is the audio core either way, so it needs the owner's ask and a
+supervised go-live test.
 
 ## Still true, and still owed
 
