@@ -924,6 +924,29 @@ people nobody knows.
 
 ## Still true, and still owed
 
+## Owner release direction (2026-09-12)
+
+The owner reaffirmed the shared wildcard certificate as intentional support for
+offline HTTPS on travel-router networks and accepted the existing guest-facing
+surface. Preserve both in this release. The owner explicitly requested a new
+TestFlight build and preparation for App Store submission. Candidate version is
+125.50 (272), incorporating main through de8bad3. Upload is authorized; actual
+App Store submission has not been requested. This Mac runs prerelease macOS
+27.0 (26A5425a), so its package is TestFlight-only; a Store release package needs
+a released macOS host. Apple review doctor reports draft 125.26 with no attached
+build and empty release notes. Packaging and upload results follow below when
+available.
+
+Candidate 272 packaging succeeded with Apple Distribution and Mac Installer
+Distribution signatures. The exact exported package passed both bundle and
+package verification. SHA-256:
+`ac102b432f1cbb8353a2ddcebefc0f56d0994b55189f83ad907041313eb5406c`.
+Go build/vet/tests, all seven browser suites plus real stream E2E, nine Swift
+tests, and 26 Worker smoke tests passed. Store draft 125.50 is configured for
+manual release, with the current checked-in description and reviewer notes.
+Apple rejects the initial-release whatsNew edit with STATE_ERROR; the
+description-only update succeeded. No physical-device acceptance is claimed.
+
 Three things a future session should not have to rediscover:
 
 - `.git/hooks/pre-commit` refuses direct commits on `main` and points at
