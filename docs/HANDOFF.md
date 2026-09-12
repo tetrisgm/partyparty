@@ -947,6 +947,13 @@ manual release, with the current checked-in description and reviewer notes.
 Apple rejects the initial-release whatsNew edit with STATE_ERROR; the
 description-only update succeeded. No physical-device acceptance is claimed.
 
+Apple accepted and committed the 39,607,568-byte build 272 upload; processing
+is pending at this checkpoint. Do not re-upload it. The CLI requested upload
+checksum verification, but Apple's upload API supplied no checksums; the local
+package hash above is the artifact receipt. The existing Store screenshot set
+contains three screenshots, all with asset delivery state COMPLETE; their visual
+currency still needs review before submission.
+
 Three things a future session should not have to rediscover:
 
 - `.git/hooks/pre-commit` refuses direct commits on `main` and points at
