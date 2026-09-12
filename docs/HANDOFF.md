@@ -954,6 +954,29 @@ package hash above is the artifact receipt. The existing Store screenshot set
 contains three screenshots, all with asset delivery state COMPLETE; their visual
 currency still needs review before submission.
 
+Release completion: Apple processed 125.50 (272) as VALID, build ID
+`f3c23870-a318-4dba-8a4a-7491ea36b38e`, expiring 2026-12-11. Its internal
+state is IN_BETA_TESTING. It is assigned to the existing public Party testing
+group `ecf8713f-cf13-44b2-9c51-4c46b5155198` and submitted for beta review;
+external state is WAITING_FOR_BETA_REVIEW, review state WAITING_FOR_REVIEW.
+What to Test notes are attached (localization
+`ca0b1f61-502b-44e2-a5ab-a7d8a196ef1b`). A combined group assignment initially
+failed because Apple does not allow manually assigning this internal group;
+external-only assignment succeeded and internal testing is already active.
+Do not retry the upload or beta submission.
+
+App Store preparation: draft ID `48b26f37-c69e-4245-8d0e-3ab787eb8610` now
+names 125.50, with manual release requested and the checked-in description and
+review notes applied. No App Store review submission was made and this
+prerelease-host TestFlight package was not attached to the Store draft.
+The three existing Store screenshots were downloaded and visually inspected:
+they show the old dark console, an audio-permission warning, empty guest room,
+and empty wall with a historical QR. Replace them with current product captures
+before submitting. Remaining Store work is a released-macOS package with a new
+build number, current screenshots, physical acceptance, and final review-doctor
+checks. The owner expressly preserves the wildcard and guest surface; neither
+is a scope-reduction prerequisite for this release.
+
 Three things a future session should not have to rediscover:
 
 - `.git/hooks/pre-commit` refuses direct commits on `main` and points at
