@@ -9,6 +9,5 @@ Mac menu-bar party server; guests use HTTPS LL-HLS and the active-room feed.
 - Upload/release only when the owner asks, never to debug or because code is ready. No automatic build/publish/deploy/reinstall jobs or commit triggers.
 - TestFlight is invitation-only; the public site collects `/api/waitlist` addresses (admin-key reads), with no download. Mac App Store is active. Preserve the dormant Sparkle channel, `scripts/ship-standalone.sh`, appcast, and versioned R2 downloads; run only when asked.
 - Pro is subscription-only. Never restore `fm.partyparty.app.pro.lifetime` or another one-off unlock.
-- Apple work uses `asc`; start with `asc review doctor`. It reads `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY_PATH`; no custom API clients. Read exact App Review feedback first and classify binary/metadata/notes/account issues before code changes. Fix the requested issue before tooling work. Every submission requires owner intent (`APP_STORE_UPLOAD=1`/manual dispatch).
-- Store builds require Apple-released macOS and `scripts/package-app-store.sh` for archive/export/verification. Never mix Sparkle, Developer ID entitlements, or standalone metadata into Store targets.
-- No GitHub Actions workflows, secrets, or runners. Run project tests on the Mac; GitHub hosts git.
+- Before Apple review, packaging, or upload work, read `docs/APPLE-RELEASE.md`.
+- No GitHub Actions workflows, secrets, or runners.
