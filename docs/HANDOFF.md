@@ -987,3 +987,5 @@ Three things a future session should not have to rediscover:
 - `cd cloudflare && npm audit` now reports 3 high advisories (sharp via
   miniflare via wrangler 4.127.1, fixed in 4.131.0). Deploy tooling only, never
   shipped Worker code. Raising the pin is the owner's dependency decision.
+
+2026-09-13: Owner-requested instruction cleanup: AGENTS.md 1147 → 252 words; removed repetition/stale build-lane guidance where present, retained safeguards and linked task-specific procedures where extracted. Local project checks passed; application code unchanged.
