@@ -68,6 +68,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case rest == "__pp/time":
+		received := time.Now().UnixMilli()
 		if !h.authorized(r, room) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
@@ -76,7 +77,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "GET required", http.StatusMethodNotAllowed)
 			return
 		}
-		received := time.Now().UnixMilli()
 		noStore(w.Header())
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]int64{"received": received, "sent": time.Now().UnixMilli()})

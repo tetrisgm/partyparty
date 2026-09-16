@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestSourceCalibrationRequiresRoomCredential(t *testing.T) {
@@ -34,5 +35,23 @@ func TestSourceCalibrationRequiresRoomCredential(t *testing.T) {
 				t.Fatal("calibration exchange is cacheable")
 			}
 		}
+	}
+}
+
+func TestClockExchangeAccountsForCredentialVerificationTime(t *testing.T) {
+	h := NewHandler(Config{Verify: func(room, token string) bool {
+		time.Sleep(30 * time.Millisecond)
+		return room == roomToken && token == publishToken
+	}}, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/r/"+roomToken+"/__pp/time", nil)
+	req.Header.Set("Authorization", "Bearer "+publishToken)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	var stamp struct{ Received, Sent int64 }
+	if err := json.Unmarshal(w.Body.Bytes(), &stamp); err != nil || w.Code != http.StatusOK {
+		t.Fatalf("exchange failed: status=%d, err=%v", w.Code, err)
+	}
+	if stamp.Sent-stamp.Received < 25 {
+		t.Fatal("credential verification was misclassified as network latency")
 	}
 }
