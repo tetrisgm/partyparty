@@ -1,0 +1,7 @@
+This build focuses on keeping guests together with a shared two-second playback target, source-clock alignment, and bounded recovery when one listener falls behind. It also updates the Android/desktop HLS player and preserves the publisher's media timestamps.
+
+Please test with two or more phones on the same Wi-Fi. Start the room on the Mac, scan its HTTPS QR code, and join the phones at different times. Compare their sound, let them play for ten minutes, and check for drift. Briefly interrupt one phone's Wi-Fi, restore it, and check that it rejoins the others without delaying healthy listeners. If it cannot recover, it should offer Retry instead of remaining far behind.
+
+On iPhone, also test starting playback by tapping, locking the screen, and returning to Safari. Please report the phone model, OS/browser, audio output (speaker, wired, or Bluetooth), and whether the room used direct Wi-Fi or relay.
+
+Automated native-HLS and Chromium timing tests passed. Physical speaker alignment, phone autoplay, and locked-phone behavior still need confirmation on this build.
