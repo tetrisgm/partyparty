@@ -19,12 +19,12 @@ import (
 // multivariant EXT-X-START hint is retained for compatibility; it does not
 // establish a shared presentation deadline on native AVPlayer. The HTTP-only
 // pin/hold-back experiments are in docs/receipts/soak-lab-20260911/.
-const PartHoldBack = 0.9
+const PartHoldBack = 0.6
 
 // Delay is the room's fixed published D: what a guest should expect between a
 // sound leaving the DJ and reaching a listener. Direct, local, and relay expose
 // this same target; it is not recomputed from path or listener conditions.
-const Delay = 3.0
+const Delay = 2.0
 
 // RewritePlaylist authors the schedule into whichever playlist tier it is
 // given. A multivariant playlist gains the EXT-X-START attachment pin; a

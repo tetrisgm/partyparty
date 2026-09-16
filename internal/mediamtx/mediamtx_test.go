@@ -357,6 +357,7 @@ func TestWriteConfig(t *testing.T) {
 		"hlsServerCert: /tmp/c.pem",
 		"hlsServerKey: /tmp/k.pem",
 		"  party:",
+		"    useAbsoluteTimestamp: true",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("config missing %q:\n%s", want, got)

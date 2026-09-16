@@ -43,7 +43,7 @@ guard CommandLine.arguments.count > 1, let url = URL(string: CommandLine.argumen
 }
 let env = ProcessInfo.processInfo.environment
 let minutes = Int(env["PP_SOAK_MINUTES"] ?? "") ?? 10
-let target = Double(env["PP_SOAK_TARGET"] ?? "") ?? 3.0
+let target = Double(env["PP_SOAK_TARGET"] ?? "") ?? 2.0
 let label = env["PP_SOAK_LABEL"] ?? "unlabelled"
 let build = env["PP_SOAK_BUILD"] ?? "unrecorded"
 let sampleLimit = max(1, minutes * 12) // one printed sample every 5s

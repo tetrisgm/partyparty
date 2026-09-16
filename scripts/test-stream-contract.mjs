@@ -66,22 +66,14 @@ assert.match(listener, /if \(data\.full\) newestAct = Number\(data\.cursor \|\| 
 const forbiddenDash = String.fromCodePoint(0x2014);
 assert.equal((listener.match(/feedList\.addEventListener\('keydown'/g) || []).length, 1,
   'listener replies must have one delegated key handler');
-assert.match(listener, /const ROOM_TARGET_FALLBACK = 3\.0;/);
+assert.match(listener, /const ROOM_TARGET_FALLBACK = 2\.0;/);
 
 const analyzer = read('scripts/analyze-session-log.mjs');
-assert.match(analyzer, /const ROOM_TARGET_SEC = 3;/);
+assert.match(analyzer, /const ROOM_TARGET_SEC = 2;/);
 assert.match(listener, /const useNative = nativeHLS && \(isAppleUA \|\| iosShellBrowser\);/);
-assert.match(listener, /const OUTLIER_LATE_BY = 0\.75;/);
-assert.match(listener, /const OUTLIER_CONFIRMATIONS = 3;/);
-assert.match(listener, /const OUTLIER_COOLDOWN_MS = 15000;/);
-assert.match(listener, /const OUTLIER_COOLDOWN_MAX_MS = 60000;/);
-// No delay tolerance: the aligner must never cap out for the session. A
-// 2-per-lifetime cap shipped once and left phones 16.7s behind at a live
-// test (2026-08-04); corrections must stay available forever, with credit
-// restored whenever one lands the phone back on target.
+// Detector/controller behavior, including repeated recovery and uncertainty,
+// is exercised by test-native-join.mjs rather than frozen source-string checks.
 assert.doesNotMatch(listener, /OUTLIER_MAX_REATTACHES/);
-assert.match(listener, /outlierCooldownMs = OUTLIER_COOLDOWN_MS; \/\/ on target/);
-assert.match(listener, /logEvent\('outlier-reattach'/);
 assert.match(listener, /document\.visibilityState !== 'visible'/);
 assert.match(listener, /const STATUS_POLL_TIMEOUT_MS = 8000;/);
 assert.match(listener, /if \(!statusPollPromise\)/);
@@ -361,7 +353,7 @@ const e2e = read('scripts/stream-e2e.mjs');
 assert.match(e2e, /hlsSegmentCount: 48/);
 assert.match(e2e, /hlsSegmentDuration: 500ms/);
 assert.match(e2e, /hlsPartDuration: 150ms/);
-assert.match(e2e, /latencyTarget: 3,/);
+assert.match(e2e, /latencyTarget: 2\.0,/);
 assert.doesNotMatch(e2e, /latencyTarget:\s*1,/);
 assert.doesNotMatch(e2e, /--delivery|--latency-target|--part-duration|--seg-duration|--seg-count/);
 

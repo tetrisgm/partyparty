@@ -50,7 +50,8 @@ for index in 0..<(comparing ? 4 : 2) {
     let driver = """
     \(index >= 2 ? candidate : "")
     const labAt = performance.now();
-    let labJoined = false, labBefore = null, labMetadataLogged = false, labDrifted = false;
+    const labReport = data => window.webkit.messageHandlers.sample.postMessage(JSON.parse(JSON.stringify(data)));
+    let labJoined = false, labBefore = null, labMetadataLogged = false, labFault = 0;
     setInterval(() => {
       const p = document.getElementById('player');
       if (!p || typeof streamReady === 'undefined') return;
@@ -60,7 +61,7 @@ for index in 0..<(comparing ? 4 : 2) {
         track.mode = 'hidden';
         if (!labMetadataLogged && track.cues?.length) {
           labMetadataLogged = true;
-          window.webkit.messageHandlers.sample.postMessage({arm:'\(name)', metadata: Array.from(track.cues).slice(-5).map(c=>({start:c.startTime,end:c.endTime,value:c.value,type:c.type}))});
+          labReport({arm:'\(name)', metadata: Array.from(track.cues).slice(-5).map(c=>({start:c.startTime,end:c.endTime,value:c.value,type:c.type}))});
         }
       }
       if (!labJoined && live && streamReady && performance.now() - labAt > \(index % 2 == 1 ? 5000 : 500)) {
@@ -69,27 +70,31 @@ for index in 0..<(comparing ? 4 : 2) {
         beginAudible('native-lab');
         play();
       }
-      if (\(injectDrift && index == 1 ? "true" : "false") && !labDrifted && performance.now()-labAt >= 30000 && !p.muted && p.readyState >= 3) {
-        labDrifted = true;
-        window.webkit.messageHandlers.sample.postMessage({arm:'\(name)',injectedStallAt:(performance.now()-labAt)/1000,duration:1.2});
+      if (\(injectDrift && index == 1 ? "true" : "false") && labFault < 3 && performance.now()-labAt >= 30000+labFault*20000 && !p.muted && p.readyState >= 3) {
+        const fault = labFault++;
+        labReport({arm:'\(name)',fault,injectedStallAt:(performance.now()-labAt)/1000,duration:1.2});
         p.playbackRate = 0;
-        setTimeout(() => { p.playbackRate = 1; }, 1200);
+        setTimeout(() => {
+          p.playbackRate = 1;
+          labReport({arm:'\(name)',fault,stallEndedAt:(performance.now()-labAt)/1000});
+        }, 1200);
       }
       const roundedOrigin = currentTimelineOrigin();
       const preciseOrigin = window.readNativeTimeline(p, roundedOrigin);
-      const origin = preciseOrigin ?? roundedOrigin;
+      const mapping = nativeTimelineSample();
+      const origin = mapping.origin;
       const latency = clockReliable() && origin != null ? (serverNow() - origin - p.currentTime*1000)/1000 : null;
       const sample = { arm: '\(name)', elapsed: (performance.now()-labAt)/1000,
-        platform, latency, position: p.currentTime, rate: p.playbackRate,
+        platform, latency, target: roomTarget(), position: p.currentTime, rate: p.playbackRate,
         audibleSeeks, generation: attachGeneration,
         muted: p.muted, paused: p.paused, ready: p.readyState, seeking: p.seeking,
-        phase: window.playbackSyncCandidate?.phase || (nativeJoin.active ? 'aligning' : 'playing'),
+        phase: window.playbackSyncCandidate?.phase || (playbackAlignment.active ? 'aligning' : 'playing'),
         backward: labBefore != null && p.currentTime < labBefore - .05,
-        clock: clockReliable(), uncertainty: clockUncertainty, origin, precise: preciseOrigin != null, roundedOrigin,
+        clock: clockReliable(), uncertainty: clockUncertainty, origin, precise: mapping.precision === 10, freshCues: preciseOrigin != null, roundedOrigin,
         seekableEnd: p.seekable.length ? p.seekable.end(p.seekable.length-1) : null,
         bufferEnd: p.buffered.length ? p.buffered.end(p.buffered.length-1) : null };
       labBefore = p.currentTime;
-      window.webkit.messageHandlers.sample.postMessage(sample);
+      labReport(sample);
     }, 250);
     """
     scripts.addUserScript(WKUserScript(source: driver, injectionTime: .atDocumentEnd, forMainFrameOnly: true))

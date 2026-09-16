@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const EVENT_RE = /^(\d\d):(\d\d):(\d\d)\.(\d{3}) \| ev\[(.*?)\] ([^ ]+)(?: (.*))?$/;
 const STREAM_READY_RE = /stream sync ready: generation=(\d+) real=([0-9.]+)s gaps=([0-9.]+)s holdback=([0-9.]+)s part=([0-9.]+)s target=([0-9.]+)s playlist=(.*)$/;
-const ROOM_TARGET_SEC = 3;
+const ROOM_TARGET_SEC = 2;
 const WARN_OPEN_LATENCY_SEC = ROOM_TARGET_SEC + 0.5;
 const MAX_OPEN_LATENCY_SEC = ROOM_TARGET_SEC + 1;
 const MAX_ROOM_SPREAD_MS = 1000;
@@ -61,6 +61,7 @@ function emptyClient(name) {
     stalls: 0,
     reconnects: 0,
     outlierReattaches: 0,
+    outlierRepairs: 0,
     legacyGovernorSeeks: 0,
     externalSeeks: 0,
     latestHealth: null,
@@ -162,6 +163,7 @@ export function analyzeText(text, source = '<stdin>') {
     if (kind === 'stall' || kind === 'rebuffer') client.stalls++;
     if (kind === 'reconnect' || kind === 'outlier-reattach' || kind === 'untracked-reconnect') client.reconnects++;
     if (kind === 'outlier-reattach') client.outlierReattaches++;
+    if (kind === 'outlier-repair') client.outlierRepairs++;
     if (kind === 'audible-seek' && fields.app === true) client.legacyGovernorSeeks++;
     if (kind === 'external-seek' || (kind === 'audible-seek' && fields.app !== true)) client.externalSeeks++;
 
@@ -277,7 +279,7 @@ function printReport(summary) {
   console.log(`Events: ${summary.eventCount} across ${summary.clientCount} client(s)`);
   console.log(`Startup: opens=${summary.startup.audioOpens} maxJoin=${summary.startup.maxJoinMs == null ? 'n/a' : `${Math.round(summary.startup.maxJoinMs)}ms`} maxSpread=${summary.startup.maxSpreadMs}ms`);
   console.log(`Steady room: samples=${summary.steady.samples} comparedWindows=${summary.steady.windows} maxSpread=${summary.steady.maxSpreadMs}ms`);
-  console.log(`Playback: stalls=${counts.stall || 0} rebuffer=${counts.rebuffer || 0} reconnect=${counts.reconnect || 0} outlierReattach=${counts['outlier-reattach'] || 0} externalSeeks=${counts['external-seek'] || 0}`);
+  console.log(`Playback: stalls=${counts.stall || 0} rebuffer=${counts.rebuffer || 0} reconnect=${counts.reconnect || 0} outlierReattach=${counts['outlier-reattach'] || 0} outlierRepair=${counts['outlier-repair'] || 0} externalSeeks=${counts['external-seek'] || 0}`);
 
   if (summary.streamReady.length) {
     console.log('\nStream readiness:');
@@ -295,7 +297,7 @@ function printReport(summary) {
     console.log('\nClient outcomes:');
     for (const client of summary.clients) {
       const latest = client.latestHealth ? ` latest=${fmtSec(client.latestHealth.lat)} buf=${client.latestHealth.buf ?? 'n/a'}` : '';
-      console.log(`  ${client.name}: opens=${client.opens.length} stalls=${client.stalls} reconnects=${client.reconnects} outlierReattach=${client.outlierReattaches} legacyGovernorSeeks=${client.legacyGovernorSeeks} externalSeeks=${client.externalSeeks}${latest}`);
+      console.log(`  ${client.name}: opens=${client.opens.length} stalls=${client.stalls} reconnects=${client.reconnects} outlierReattach=${client.outlierReattaches} outlierRepair=${client.outlierRepairs} legacyGovernorSeeks=${client.legacyGovernorSeeks} externalSeeks=${client.externalSeeks}${latest}`);
     }
   }
   console.log('\nAcceptance:');

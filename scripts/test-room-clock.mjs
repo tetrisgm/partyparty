@@ -2,8 +2,32 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { readNativeTimeline } from './lib/native-clock.mjs';
+import { programTimelineErrors } from './lib/program-timeline.mjs';
+
+const timeline = '#EXT-X-PROGRAM-DATE-TIME:2026-09-16T00:00:00.000Z\n#EXTINF:0.512,\na.mp4\n#EXT-X-PROGRAM-DATE-TIME:2026-09-16T00:00:00.512Z';
+assert.deepEqual(programTimelineErrors(timeline),[0]);
+assert.deepEqual(programTimelineErrors(timeline.replace('.512Z','.488Z')),[-24], 'arrival-time stamping escaped the timeline check');
 
 const html = fs.readFileSync(new URL('../web/listener.html', import.meta.url), 'utf8');
+// A seek can temporarily remove DataCues. A previously validated mapping may
+// bridge that gap, but must expire and must not survive a native timeline jump.
+{
+  let time=0, rounded=1700000000000, precise=rounded+123;
+  const c=vm.createContext({performance:{now:()=>time}, player:{},
+    currentTimelineOrigin:()=>rounded,readNativeTimeline:()=>precise});
+  vm.runInContext(html.slice(html.indexOf('    let nativeOriginCache'),html.indexOf('    const latencyUncertaintyMs')),c);
+  const sample=()=>vm.runInContext('nativeTimelineSample()',c);
+  assert.equal(sample().precision,10);
+  precise=null;time=2000;
+  assert.equal(sample().origin,rounded+123,'seek discarded a validated timeline');
+  time=6100;
+  assert.equal(sample().precision,500,'expired cues were still treated as precise');
+  precise=rounded+123;sample();precise=null;rounded+=2000;
+  assert.equal(sample().precision,500,'discontinuity retained a previous timeline');
+  precise=rounded+123;sample();precise=null;
+  vm.runInContext('nativeOriginCache=null',c);
+  assert.equal(sample().precision,500,'new attachment reused an old origin');
+}
 const clockCode = html.slice(html.indexOf('    // Room clock.'), html.indexOf('    function currentTimelineOrigin'));
 assert.ok(clockCode.length > 1000);
 let mono = 1000, wall = 1700000000000, uncertainty = 0, override = null;

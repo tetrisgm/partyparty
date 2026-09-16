@@ -968,7 +968,7 @@
     // LOW-LATENCY ONLY. Loading the guest page already proved DNS + TLS work,
     // and every player receives the same HTTPS LL-HLS stream.
     let LLSTREAM = null, localStreamURL = null;
-    const ROOM_TARGET_FALLBACK = 3.0;
+    const ROOM_TARGET_FALLBACK = 2.0;
     let latencyTarget = 0, streamGeneration = 0, streamReady = false;
     let localLatencyTarget = 0, localStreamGeneration = 0, localStreamReady = false, localLive = false;
     // Which host a relayed guest is actually ON. There are two relay hostnames
@@ -1333,12 +1333,25 @@
       if (origins.length < 2 || origins[origins.length-1]-origins[0] > 10) return null;
       return origins[Math.floor(origins.length/2)];
     }
+    let nativeOriginCache = null, nativeOriginSeenAt = 0;
     function nativeTimelineSample(){
       const rounded = currentTimelineOrigin();
       const precise = readNativeTimeline(player, rounded);
-      return { origin: precise == null ? rounded : precise, precision: precise == null ? 500 : 10 };
+      if (precise != null) { nativeOriginCache = precise; nativeOriginSeenAt = performance.now(); }
+      // AVPlayer briefly removes metadata during a seek. Retain the validated
+      // mapping for this attachment only, with a short expiry and the rounded
+      // native origin as an independent discontinuity check.
+      if (nativeOriginCache != null && (!Number.isFinite(rounded)
+          || Math.abs(nativeOriginCache-rounded)>502 || performance.now()-nativeOriginSeenAt>6000)) nativeOriginCache = null;
+      return { origin: nativeOriginCache == null ? rounded : nativeOriginCache,
+        precision: nativeOriginCache == null ? 500 : 10 };
     }
     const latencyUncertaintyMs = () => clockUncertainty + (useNative ? timelinePrecisionMs : 0);
+    function playbackTimelineSample(){
+      if (useNative) return nativeTimelineSample();
+      const stamp = hls?.playingDate?.getTime();
+      return { origin: Number.isFinite(stamp) ? stamp-player.currentTime*1000 : null, precision: 1 };
+    }
 
     // PROGRAM-DATE-TIME is Apple's cross-device synchronization frame. Native
     // Safari's bridge can briefly disappear while AVPlayer rebuilds a seek, so
@@ -2085,7 +2098,7 @@
     // "muted, staying warm". iOS keeps foreground muted playback going; if it
     // gets suspended while muted+locked, resume (foreground) restarts it.
     function pauseGuest(){
-      cancelNativeJoin();
+      cancelPlaybackAlignment();
       userPaused = true;
       player.muted = true; setPlayingUI(false); setStatus('paused'); logEvent('mute');
     }
@@ -2094,8 +2107,8 @@
     function resumeGuest(){
       if (playBlocked) { retryPlayback('resume'); return; }
       userPaused = false; yielded = false; claimAudio();
-      if (nativeJoin.active) return;
-      if (useNative && audibleGeneration !== attachGeneration) {
+      if (playbackAlignment.active) return;
+      if (audibleGeneration !== attachGeneration) {
         beginAudible('resume'); play().catch(()=>{}); return;
       }
       if (!player.paused && player.readyState >= 2 && !stale()) {
@@ -2123,7 +2136,7 @@
     // stopped) must never spin attach() - gate on `live` and a cooldown.
     let lastReattach = 0;
     function reattach(reason){
-      if (!live || !streamReady) return;
+      if (!live || !streamReady || playBlocked) return;
       const now = Date.now();
       if (now - lastReattach < 2500) return;
       lastReattach = now;
@@ -2145,10 +2158,11 @@
 
     function attach(){
       if (!chosenStream() || !live || !streamReady) return false;
-      cancelNativeJoin();
+      cancelPlaybackAlignment();
       const src = chosenStream();
       attachGeneration++;
       timelineOriginMs = null;
+      nativeOriginCache = null;
       playBlocked = false;
       attached = true;
       if (useNative) {
@@ -2170,10 +2184,12 @@
           // Non-Apple browsers use the same fixed room target. Apple stays
           // on native AVPlayer for smooth lock-screen playback.
           liveSyncDuration: target,
-          // Catch up gently when possible; only a gross network stall reaches
-          // the hard latency ceiling.
+          // The shared source-clock controller repairs a late listener without
+          // changing music speed. Its deadline is independent of hls.js's
+          // internal live-edge estimate, which can increase after a stall.
           liveMaxLatencyDuration: target + 6,
-          maxLiveSyncPlaybackRate: 1.15,
+          maxLiveSyncPlaybackRate: 1,
+          liveSyncOnStallIncrease: 0,
           liveDurationInfinity: true,
           backBufferLength: 10,
           maxBufferLength: 30,
@@ -2234,7 +2250,7 @@
       catch (e) { setStatus('player error - reload the page'); return false; }
     }
 
-    // Position a fresh native attachment while muted, then leave it passive.
+    // Position against the same source deadline on both playback engines.
     // A seek consumes time: compensate for its observed completion delay so
     // the landed source sample, rather than the requested sample, meets T + D.
     const SYNC_WARN_AT = 1.0;
@@ -2242,25 +2258,28 @@
     let attachGeneration = 0, audibleGeneration = -1, openedGeneration = -1;
     let audibleReason = 'join', listenRequestedAt = 0, playBlocked = false;
     const roomTarget = () => latencyTarget || ROOM_TARGET_FALLBACK;
-    function createNativeJoin({ media, now, monotonic, reference, reliable, target, eligible, visible, finish, event, earliest = () => -Infinity }) {
+    function createPlaybackAlignment({ media, now, monotonic, reference, reliable, target, eligible, visible, finish, event, earliest = () => -Infinity }) {
       let active = false, began = 0, phase = 'clock', attempts = 0;
-      let knownOrigin = null, lastSeek = 0, seekCost = 0;
+      let knownOrigin = null, lastSeek = 0, seekCost = 0, repair = false;
+      let stableError = null, stableSince = 0;
       function done(reason, error = null) {
         active = false;
-        finish({ reason, error, attempts, elapsed: monotonic()-began });
+        finish({ reason, error, attempts, repair, elapsed: monotonic()-began });
       }
-      function start() {
+      function start(options = {}) {
+        repair = options.repair === true;
         active = true; began = monotonic(); phase = 'clock'; attempts = 0;
-        knownOrigin = null; lastSeek = 0; seekCost = 0;
+        if (!repair) { knownOrigin = null; seekCost = 0; }
+        lastSeek = 0;
         media.muted = true;
       }
-      function cancel() { active = false; knownOrigin = null; }
+      function cancel() { active = false; knownOrigin = null; seekCost = 0; }
       function tick() {
         if (!active) return;
         if (!eligible()) { cancel(); return; }
         if (!visible()) { done('background'); return; }
         const elapsed = monotonic()-began;
-        if (elapsed >= 12000) { done('alignment-timeout'); return; }
+        if (elapsed >= (repair ? 2000 : 12000)) { done('alignment-timeout'); return; }
         const mapping = reference();
         if (Number.isFinite(mapping.origin)) knownOrigin = mapping.origin;
         if (!Number.isFinite(mapping.rounded) || (knownOrigin != null && Math.abs(mapping.rounded-knownOrigin)>502)) knownOrigin = null;
@@ -2271,15 +2290,27 @@
           if (elapsed >= 6000) done('clock-unavailable');
           return;
         }
-        if (media.seeking || media.paused || media.readyState < 3) return;
+        if (media.seeking || media.paused || media.readyState < 3 || media.playbackRate === 0) {
+          stableError = null; return;
+        }
         const stamp = knownOrigin + media.currentTime*1000;
         const error = (now()-stamp)/1000-target();
         if (phase === 'settling') {
-          if (monotonic()-lastSeek < 800) return;
+          if (monotonic()-lastSeek < 350) return;
+          // seeked/readyState can precede actual clock progression. Require a
+          // stable source delay, not just an elapsed timer, before opening audio.
+          if (stableError == null || Math.abs(error-stableError)>.01) {
+            stableError = error; stableSince = monotonic(); return;
+          }
+          if (monotonic()-stableSince < 200) return;
           seekCost = Math.max(0, Math.min(.8, seekCost+error));
           phase = 'clock';
         }
-        if (Math.abs(error) <= .04 && stamp >= earliest()) { done('aligned', error); return; }
+        // Startup leaves a tight margin for peer spread. During recovery a
+        // second decoder reset to remove a few tens of milliseconds can itself
+        // starve AVPlayer; accept a stable landing within the room's 100 ms
+        // test budget (75 ms repair + 25 ms healthy startup).
+        if (Math.abs(error) <= (repair ? .075 : .025) && stamp >= earliest()) { done('aligned', error); return; }
         if (attempts >= 8) { done('alignment-missed', error); return; }
         const desired = now()-target()*1000+seekCost*1000;
         // A stale attachment may seek forward across the previous audible
@@ -2291,55 +2322,62 @@
           if (position >= media.seekable.start(i) && position < media.seekable.end(i)-.1) available = true;
         }
         if (!available || !media.muted) return;
-        phase = 'settling'; lastSeek = monotonic(); attempts++;
+        phase = 'settling'; stableError = null; lastSeek = monotonic(); attempts++;
         media.currentTime = position;
         event({ position, seekCost, attempt: attempts });
       }
       return { start, cancel, tick, get active() { return active; } };
     }
-    let nativeJoinTimer = 0, nativeJoinGeneration = -1;
+    let playbackAlignmentTimer = 0, playbackAlignmentGeneration = -1;
     let lastAudibleProgramMs = -Infinity, lastAudibleStream = '';
-    const nativeJoin = createNativeJoin({
+    const playbackAlignment = createPlaybackAlignment({
       media: player, now: serverNow, monotonic: () => performance.now(), target: roomTarget,
       reference: () => {
-        const rounded = currentTimelineOrigin();
-        return { rounded, origin: readNativeTimeline(player, rounded) };
+        const mapping = playbackTimelineSample();
+        return { rounded: useNative ? currentTimelineOrigin() : mapping.origin,
+          origin: mapping.precision <= 10 ? mapping.origin : null };
       },
       reliable: () => clockReliable() && clockUncertainty < 40,
-      eligible: () => nativeJoinGeneration === attachGeneration && live && streamReady && !userPaused && !yielded && !playBlocked,
+      eligible: () => playbackAlignmentGeneration === attachGeneration && live && streamReady && !userPaused && !yielded && !playBlocked,
       visible: () => document.visibilityState === 'visible',
       earliest: () => lastAudibleStream === chosenStream() ? lastAudibleProgramMs : -Infinity,
       event: data => logEvent('join-position', data),
       finish: result => {
-        clearInterval(nativeJoinTimer); nativeJoinTimer = 0;
+        clearInterval(playbackAlignmentTimer); playbackAlignmentTimer = 0;
         logEvent('join-alignment', result);
-        if (nativeJoinGeneration !== attachGeneration || !live || !streamReady || userPaused || yielded || playBlocked) return;
+        if (playbackAlignmentGeneration !== attachGeneration || !live || !streamReady || userPaused || yielded || playBlocked) return;
+        if (result.reason === 'alignment-timeout' || result.reason === 'alignment-missed') {
+          showPlayFailure('Could not keep in sync. Tap Retry.'); return;
+        }
         if ((player.seeking && result.reason !== 'background') || player.error) { showPlayFailure('Could not synchronize. Tap Retry.'); return; }
         player.muted = false;
         if (player.paused) player.play().catch(() => showPlayFailure('Tap Retry to start playback.'));
         if (!sumPlayStart) sumPlayStart = Date.now();
-        setPlayingUI(true); setStatus('live');
+        setPlayingUI(true); setStatus(result.reason === 'clock-unavailable' ? 'Sync timing unavailable' : 'live');
         reportAudioOpen(measureLatency());
       },
     });
-    function cancelNativeJoin(){
-      if (nativeJoin.active) audibleGeneration = -1;
-      nativeJoin.cancel(); clearInterval(nativeJoinTimer); nativeJoinTimer = 0;
+    function cancelPlaybackAlignment(){
+      if (playbackAlignment.active) audibleGeneration = -1;
+      playbackAlignment.cancel(); clearInterval(playbackAlignmentTimer); playbackAlignmentTimer = 0;
+    }
+    function startPlaybackAlignment(repair = false){
+      playbackAlignmentGeneration = attachGeneration;
+      playbackAlignment.start({ repair });
+      clearInterval(playbackAlignmentTimer);
+      playbackAlignmentTimer = setInterval(() => {
+        playbackAlignment.tick();
+        if (!playbackAlignment.active) { clearInterval(playbackAlignmentTimer); playbackAlignmentTimer = 0; }
+      }, 50);
+      setStatus('syncing…');
     }
     function beginAudible(reason){
       if (audibleGeneration === attachGeneration) return false;
       audibleGeneration = attachGeneration;
       audibleReason = reason || 'join';
       listenRequestedAt = Date.now();
-      if (useNative && document.visibilityState === 'visible') {
-        nativeJoinGeneration = attachGeneration;
-        nativeJoin.start();
-        clearInterval(nativeJoinTimer);
-        nativeJoinTimer = setInterval(() => {
-          nativeJoin.tick();
-          if (!nativeJoin.active) { clearInterval(nativeJoinTimer); nativeJoinTimer = 0; }
-        }, 50);
-        setStatus('syncing…');
+      if (document.visibilityState === 'visible') {
+        startPlaybackAlignment();
       } else player.muted = false;
       setPlayingUI(true);
       const generation = attachGeneration;
@@ -2360,7 +2398,7 @@
       });
     }
     function showPlayFailure(message){
-      cancelNativeJoin();
+      cancelPlaybackAlignment();
       audibleGeneration = -1;
       playBlocked = true;
       player.muted = true;
@@ -2456,8 +2494,8 @@
     function onClaim(msg){
       if (!msg || msg.tabId === tabId || msg.ts <= myClaim) return;
       myClaim = msg.ts; // adopt so we don't out-race a fresher claim later
-      if (nativeJoin.active || (started && !userPaused && !player.muted && !player.paused)) {
-        cancelNativeJoin();
+      if (playbackAlignment.active || (started && !userPaused && !player.muted && !player.paused)) {
+        cancelPlaybackAlignment();
         yielded = true;
         // MUTE as well as pause: any path that later resurrects playback
         // (DJ stop→restart auto-resume, version self-reload) then comes back
@@ -2476,7 +2514,7 @@
 
     btn.addEventListener('click', () => {
       claimPlaybackSession(); // in-gesture: audio must ignore the Silent switch
-      if (nativeJoin.active) { pauseGuest(); return; }
+      if (playbackAlignment.active) { pauseGuest(); return; }
       // A yielded tab (another tab took the audio) reclaims on tap.
       if (yielded) {
         yielded = false; claimAudio(); userPaused = false;
@@ -2577,8 +2615,8 @@
         lastProgress = Date.now();
         recoveringUntil = 0;
       }
-      if (useNative && audibleActive() && clockReliable()) {
-        const mapping = nativeTimelineSample();
+      if (audibleActive() && clockReliable()) {
+        const mapping = playbackTimelineSample();
         if (mapping.origin != null) {
           if (lastAudibleStream !== chosenStream()) lastAudibleProgramMs = -Infinity;
           lastAudibleStream = chosenStream();
@@ -2595,7 +2633,7 @@
       // from Safari, Control Center, or the guest and can move this phone away
       // from the room, so retain it as an important diagnostic.
       logEvent(audible ? 'external-seek' : 'seek',
-        { pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), app: nativeJoin.active });
+        { pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), app: playbackAlignment.active });
     });
     player.addEventListener('seeked', sampleProgress);
     // 4s of zero progress is a starving player, not a buffering one. The old
@@ -2603,12 +2641,9 @@
     // (the 2026-08-04 Shack15 set); a quick rebuild is a short blip that also
     // lands with the room's full cushion.
     function stale(){ return started && lastProgress && Date.now() - lastProgress > 4000; }
-    const OUTLIER_LATE_BY = 0.75;
+    const OUTLIER_ERROR_BY = 0.15;
     const OUTLIER_CONFIRMATIONS = 3;
-    const OUTLIER_COOLDOWN_MS = 15000;     // mechanical minimum: let an attachment land and re-measure
-    const OUTLIER_COOLDOWN_MAX_MS = 60000; // reached only while corrections fail to stick
-    let outlierBeats = 0, outlierCoolingUntil = 0, outlierReattaches = 0;
-    let outlierCooldownMs = OUTLIER_COOLDOWN_MS;
+    let outlierBeats = 0, outlierRepairs = 0;
     let originCandidate = null, originRepeats = 0;
     function audibleActive(){
       return started && !player.muted && !userPaused && !yielded && live && streamReady;
@@ -2640,8 +2675,8 @@
       return false;
     }
     function recoverPlayback(reason){
-      if (!live || !streamReady || userPaused || yielded) return;
-      if (nativeJoin.active) return;
+      if (!live || !streamReady || userPaused || yielded || playBlocked) return;
+      if (playbackAlignment.active) return;
       const broken = !!player.error || player.readyState === 0 || stale();
       if (!broken && !player.paused) return;
       if (Date.now() < recoveringUntil) { player.play().catch(() => {}); return; }
@@ -2656,20 +2691,14 @@
         player.play().catch(() => { setPlayingUI(false); setStatus('tap Resume to keep listening'); });
       }
     }
-    // Native AVPlayer owns normal LL-HLS playout. The page never seeks or
-    // continuously steers a healthy player. Excess delay is NOT tolerated:
-    // every confirmed drift past the room target gets a fresh native
-    // attachment, every time, for the whole set. The room stays in sync or
-    // the phone is actively being pulled back to it. The cooldown is only
-    // the mechanical minimum for an attachment to land and re-measure (15s);
-    // it stretches toward 60s only while corrections demonstrably fail to
-    // stick, and snaps back the moment one lands. The 125.33-era code had a
-    // 2-per-session lifetime cap here; after two real stalls the aligner
-    // went permanently dead and phones drifted unbounded (16.7s observed at
-    // a live test on 2026-08-04). An unavailable timeline is diagnostic only
-    // and must never interrupt audible playback.
-    function considerNativeOutlier(lat, stalled){
-      if (!useNative || document.visibilityState !== 'visible' || stalled || player.readyState < 3) {
+    // Confirm drift locally at 250 ms intervals, independently of network
+    // heartbeat traffic. Keep this attachment's clock and seek calibration:
+    // rebuilding HLS discards both and turns a brief glitch into seconds of lag.
+    // Healthy/background playback is passive; uncertain timing cannot trigger
+    // a correction. A failed bounded repair is shown to this guest explicitly.
+    function considerPlaybackOutlier(lat, stalled){
+      if (document.visibilityState !== 'visible' || stalled || player.readyState < 3
+          || player.paused || player.seeking || player.playbackRate !== 1 || playbackAlignment.active) {
         outlierBeats = 0;
         return;
       }
@@ -2679,24 +2708,21 @@
         return;
       }
       const lateBy = lat - roomTarget();
-      if (lateBy - latencyUncertaintyMs() / 1000 < OUTLIER_LATE_BY) {
+      if (Math.abs(lateBy) - latencyUncertaintyMs() / 1000 < OUTLIER_ERROR_BY) {
         outlierBeats = 0;
-        outlierCooldownMs = OUTLIER_COOLDOWN_MS; // on target: the last correction landed, restore full credit
         return;
       }
       if (++outlierBeats < OUTLIER_CONFIRMATIONS) return;
       outlierBeats = 0;
-      const now = Date.now();
-      if (now < outlierCoolingUntil) return;
-      outlierCoolingUntil = now + outlierCooldownMs;
-      outlierCooldownMs = Math.min(outlierCooldownMs * 2, OUTLIER_COOLDOWN_MAX_MS);
-      outlierReattaches++;
+      if (!clockReliable() || clockUncertainty >= 40 || (useNative && timelinePrecisionMs !== 10)) return;
+      outlierRepairs++;
       sumRecovers++;
-      logEvent('outlier-reattach', {
-        lat: rnd3(lat), late: rnd3(lateBy), attempt: outlierReattaches,
-        ref: syncReference(), progressAge: lastProgress ? now - lastProgress : 0,
+      sampleProgress(); // capture the last heard source sample before muting
+      logEvent('outlier-repair', {
+        lat: rnd3(lat), late: rnd3(lateBy), attempt: outlierRepairs,
+        ref: syncReference(), progressAge: lastProgress ? Date.now() - lastProgress : 0,
       });
-      reattach('latency-outlier');
+      startPlaybackAlignment(true);
     }
     function watchAudibleHealth(lat, stalled){
       if (!audibleActive()) { resetAudibleWatchdogs(); return; }
@@ -2707,8 +2733,13 @@
         return;
       }
 
-      considerNativeOutlier(lat, stalled);
+      considerPlaybackOutlier(lat, stalled);
     }
+    setInterval(() => {
+      if (!started || document.visibilityState !== 'visible') return;
+      tryRestoreTimelineOrigin();
+      watchAudibleHealth(measureLatency(), player.readyState < 3);
+    }, 250);
     player.addEventListener('pause',   () => {
       if (pendingReload) { reloadKeepingIntent(); return; } // safe moment: nothing playing
       // We pause by MUTING, never player.pause(). A real pause here is a system
@@ -2755,7 +2786,7 @@
     document.addEventListener('visibilitychange', () => {
       // Finish the muted startup before background timers can be suspended.
       // The native engine completes any pending seek and continues on its own.
-      if (nativeJoin.active) nativeJoin.tick();
+      if (playbackAlignment.active) playbackAlignment.tick();
       if (document.visibilityState !== 'visible') return;
       syncClock();
       // Coming back to the tab: reconnect if the interruption outlived the
@@ -2806,7 +2837,7 @@
           }
         });
         navigator.mediaSession.setActionHandler('pause', () => {
-          if (started || nativeJoin.active) pauseGuest();
+          if (started || playbackAlignment.active) pauseGuest();
         });
         mediaSessionHandlersRegistered = true;
       } catch (e) {}
@@ -2821,19 +2852,18 @@
     let resumeWanted = false, resumeTries = 0;
     try { resumeWanted = sessionStorage.getItem('pp.resume') === '1'; sessionStorage.removeItem('pp.resume'); } catch (e) {}
     function resetTransport(){
-      cancelNativeJoin();
+      cancelPlaybackAlignment();
       try { if (hls) { hls.destroy(); hls = null; } } catch (e) {}
       started = false;
       try { player.removeAttribute('src'); player.load(); } catch (e) {}
       attachGeneration++;
       attached = false; ready = false; errRetries = 0; playBlocked = false;
+      nativeOriginCache = null;
       timelineOriginMs = null; audibleGeneration = -1; openedGeneration = -1;
       recoveringUntil = 0; lastProgress = 0; lastTime = NaN; stallStartedAt = 0;
       resetAudibleWatchdogs();
       outlierBeats = 0;
-      outlierCoolingUntil = 0;
-      outlierReattaches = 0;
-      outlierCooldownMs = OUTLIER_COOLDOWN_MS;
+      outlierRepairs = 0;
     }
     function stopPlayback(){
       resumeWanted = started && !userPaused && !yielded; // a yielded tab must not auto-resume into audio
@@ -3133,7 +3163,6 @@
       const lat = measureLatency();
       reportAudioOpen(lat);
       if (lat != null && lat > sumMaxLatency) sumMaxLatency = lat;
-      watchAudibleHealth(lat, stalled);
       let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (userPaused || yielded || !!selectedDJId ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
         + '&buf=' + bufferedAhead().toFixed(1)
         + '&v=' + encodeURIComponent(PAGE_VERSION)

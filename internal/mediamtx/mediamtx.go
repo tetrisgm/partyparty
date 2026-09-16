@@ -121,6 +121,9 @@ authInternalUsers:
   - action: read
 paths:
   %s:
+    # Preserve the publisher's sample clock. Arrival-time stamps vary with
+    # encoder bursts and make AVPlayer and hls.js disagree about the same audio.
+    useAbsoluteTimestamp: true
 `, o.RTSPPort, o.HLSPort, o.CertPath, o.KeyPath, o.SegCount, o.SegDur, o.PartDur, o.Path)
 	return os.WriteFile(path, []byte(yml), 0o644)
 }

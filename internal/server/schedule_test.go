@@ -121,7 +121,7 @@ func TestScheduleNeverShortensUpstreamHoldBack(t *testing.T) {
 // form - and nothing else changes. Media segments are bytes we never touch.
 func TestScheduleLeavesOtherPlaylistsAlone(t *testing.T) {
 	multivariant := "#EXTM3U\n#EXT-X-VERSION:9\n#EXT-X-STREAM-INF:BANDWIDTH=320000\nstream.m3u8\n"
-	want := "#EXTM3U\n#EXT-X-VERSION:9\n#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES\n#EXT-X-STREAM-INF:BANDWIDTH=320000\nstream.m3u8\n"
+	want := "#EXTM3U\n#EXT-X-VERSION:9\n#EXT-X-START:TIME-OFFSET=-2.000,PRECISE=YES\n#EXT-X-STREAM-INF:BANDWIDTH=320000\nstream.m3u8\n"
 	if got := string(rewriteLivePlaylist([]byte(multivariant))); got != want {
 		t.Fatalf("multivariant rewrite = %q, want %q", got, want)
 	}
