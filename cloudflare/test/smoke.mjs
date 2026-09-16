@@ -210,23 +210,43 @@ test("www redirects to the canonical product domain", async () => {
   assert.equal(response.headers.get("location"), "https://partyparty.party/support?from=test");
 });
 
-test("retired public party, profile, discovery, sign-up, and media routes stay gone", async () => {
+test("retired public party, profile, discovery, and media routes stay gone", async () => {
   const env = baseEnv();
   env.ADMIN_KEY = "admin-key";
-  for (const path of ["/live", "/home", "/demo", "/e/test", "/@dj", "/faq", "/api/discover", "/api/events", "/event/test/live/live.m3u8", "/api/waitlist", "/api/waitlist/list"]) {
+  for (const path of ["/live", "/home", "/demo", "/e/test", "/@dj", "/faq", "/api/discover", "/api/events", "/event/test/live/live.m3u8"]) {
     const response = await worker.fetch(new Request(`https://partyparty.party${path}`), env);
     assert.equal(response.status, 404, path);
   }
-  // The site collects no addresses any more - the way in is the TestFlight
-  // link, so there is nothing to post to and nothing to read back. POSTing is
-  // the shape the old form used, and the one worth pinning.
-  for (const path of ["/api/waitlist", "/api/waitlist/list"]) {
-    const response = await worker.fetch(new Request(`https://partyparty.party${path}`, {
-      method: "POST", body: JSON.stringify({ email: "someone@example.com", admin: "admin-key" }),
-    }), env);
-    assert.equal(response.status, 404, "POST " + path);
+});
+
+test("beta requests deduplicate, bound input, and keep addresses behind the admin key", async () => {
+  const env = baseEnv();
+  env.ADMIN_KEY = "test-admin-key";
+  const post = (path, body) => worker.fetch(new Request(`https://partyparty.party${path}`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  }), env);
+  for (const email of ["person@example.com", " PERSON@example.com "]) {
+    const response = await post("/api/waitlist", { email });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true });
   }
-  assert.equal((await env.DL.list({ prefix: "waitlist/" })).objects.length, 0);
+  assert.equal((await env.DL.list({ prefix: "waitlist/" })).objects.length, 1);
+  assert.equal((await post("/api/waitlist", { email: "invalid" })).status, 400);
+  assert.equal((await post("/api/waitlist", { email: "x".repeat(3000) })).status, 413);
+  assert.equal((await post("/api/waitlist/list", {})).status, 403);
+  assert.equal((await post("/api/waitlist/list", { admin: "wrong" })).status, 403);
+  const response = await post("/api/waitlist/list", { admin: env.ADMIN_KEY });
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  const data = await response.json();
+  assert.equal(data.people[0].email, "person@example.com");
+  assert.equal(data.nextCursor, null);
+  delete env.ADMIN_KEY;
+  assert.equal((await post("/api/waitlist/list", { admin: "test-admin-key" })).status, 403);
+  env.REGISTRATION_RATE_LIMITER.limit = async () => ({ success: false });
+  assert.equal((await post("/api/waitlist", { email: "other@example.com" })).status, 429);
+  for (const path of ["/api/waitlist", "/api/waitlist/list"]) {
+    assert.equal((await worker.fetch(new Request(`https://partyparty.party${path}`), env)).status, 405);
+  }
 });
 
 test("broker ping remains public and registration remains available", async () => {
@@ -681,7 +701,7 @@ test("the product hero links to the public source repository", async () => {
 test("launch CTAs use measurable first-party redirects", async () => {
   const env = baseEnv();
   const cases = [
-    ["/go/testflight/hero", "https://testflight.apple.com/join/HPRAgyJk"],
+    ["/go/testflight/hero", "/#get"],
     ["/go/github/hero", "https://github.com/tetrisgm/partyparty"],
   ];
   for (const [path, destination] of cases) {

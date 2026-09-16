@@ -23,7 +23,25 @@
 <meta name="twitter:image:alt" content="PartyParty: Your Mac, their phones, one live room">
 <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
 <link rel="preload" as="image" href="/img/pp-hero.jpg" fetchpriority="high">
-<script>document.documentElement.className+=' js'</script>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const form = document.getElementById('inviteForm');
+  const result = document.getElementById('inviteResult');
+  const button = form.querySelector('button');
+  form.addEventListener('submit', async function(event){
+    event.preventDefault();
+    button.disabled = true;
+    result.textContent = 'Sending your request…';
+    try {
+      const response = await fetch('/api/waitlist', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({email:form.elements.email.value})});
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Please try again.');
+      result.textContent = 'You are on the list. We will email you when an invitation is available.';
+      form.reset();
+    } catch(error) { result.textContent = error.message || 'Please try again.'; }
+    finally { button.disabled = false; }
+  });
+});document.documentElement.className+=' js'</script>
 <title>PartyParty - A live headphone party from your Mac</title>
 </head>
 <body>
@@ -340,7 +358,7 @@ footer a:hover{color:var(--ink);text-decoration:underline}
 <nav class="nav">
   <div class="in">
     <a class="brand" href="#top"><span class="mark">&#x1F57A;</span><b>PartyParty</b></a>
-    <a class="btn" href="/go/testflight/nav" target="_blank" rel="noopener"><span class="tflabel">Join the TestFlight beta</span><span class="tfshort">TestFlight beta</span></a>
+    <a class="btn" href="#get"><span class="tflabel">Request an invite</span><span class="tfshort">Request invite</span></a>
   </div>
 </nav>
 
@@ -348,10 +366,10 @@ footer a:hover{color:var(--ink);text-decoration:underline}
   <h1>Turn your Mac into a party machine.</h1>
   <p class="sub2">Play music or DJ live. Friends scan the code on iPhone and listen through their AirPods.</p>
   <div class="ctas">
-    <a class="btn inv" href="/go/testflight/hero" target="_blank" rel="noopener">Join the TestFlight beta</a>
+    <a class="btn inv" href="#get">Request an invite</a>
     <a class="btn github" id="githubStarBtn" href="/go/github/hero" target="_blank" rel="noopener" aria-label="Star PartyParty on GitHub, 0 stars"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .7a11.5 11.5 0 0 0-3.64 22.4c.58.1.79-.25.79-.56v-2.23c-3.23.7-3.91-1.37-3.91-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.78 1.19 1.78 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.58-.29-5.29-1.29-5.29-5.68 0-1.25.45-2.28 1.19-3.08-.12-.29-.52-1.47.11-3.04 0 0 .97-.31 3.16 1.18a10.95 10.95 0 0 1 5.76 0c2.19-1.49 3.15-1.18 3.15-1.18.64 1.57.24 2.75.12 3.04.74.8 1.19 1.83 1.19 3.08 0 4.4-2.72 5.38-5.31 5.67.42.36.79 1.07.79 2.16v3.2c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .7Z"/></svg><span>Star</span><span class="star-count" id="githubStarCount" aria-live="polite">0</span></a>
   </div>
-  <p class="note">Free. Needs the TestFlight app and macOS&nbsp;26 or later.</p>
+  <p class="note">Invitation-only beta. Apple-silicon Mac with macOS&nbsp;26 or later.</p>
 </header>
 
 <section class="sect places">
@@ -451,7 +469,7 @@ footer a:hover{color:var(--ink);text-decoration:underline}
           </div>
         </div>
         <button class="plus" type="button" aria-expanded="false" aria-controls="detail-listening"><span class="glyph" aria-hidden="true"></span><span class="sr">More about guest listening</span></button>
-        <div class="detail" id="detail-listening"><h4>One live set, on every phone.</h4><p>PartyParty keeps playback close to the live room while each pair of ears picks its own level. Locked screens keep playing. Direct and cloud-relayed listeners can land at different delays during the public beta.</p></div>
+        <div class="detail" id="detail-listening"><h4>One live set, on every phone.</h4><p>PartyParty keeps playback close to the live room while each pair of ears picks its own level. Locked screens keep playing. Direct and cloud-relayed listeners can land at different delays during the invitation-only beta.</p></div>
       </div>
     </div>
 </section>
@@ -487,19 +505,19 @@ footer a:hover{color:var(--ink);text-decoration:underline}
       </details>
       <details>
         <summary>How close is playback to the Mac?<i></i></summary>
-        <div class="ans"><p>Playback stays close to the live room and uses a short cushion for ordinary Wi-Fi hiccups. During the public beta, phones using the local and cloud-relayed paths can land at different delays. Test the exact network and devices before an important event.</p></div>
+        <div class="ans"><p>Playback stays close to the live room and uses a short cushion for ordinary Wi-Fi hiccups. During the invitation-only beta, phones using the local and cloud-relayed paths can land at different delays. Test the exact network and devices before an important event.</p></div>
       </details>
       <details>
         <summary>How do I get PartyParty?<i></i></summary>
-        <div class="ans"><p>Through TestFlight, Apple&rsquo;s beta service. Install TestFlight from the Mac App Store, then open the <a href="/go/testflight/faq" target="_blank" rel="noopener">join link</a> and press Install. Updates arrive the same way.</p></div>
+        <div class="ans"><p><a href="#get">Request an invitation</a> below. When invited, install through TestFlight, Apple&rsquo;s beta service. Updates arrive through TestFlight too.</p></div>
       </details>
       <details>
         <summary>Which Macs and phones are supported?<i></i></summary>
-        <div class="ans"><p>The public beta runs on Apple-silicon Macs with macOS 26 or later. Guests join from Safari on a recent iPhone, with any headphones they like.</p></div>
+        <div class="ans"><p>The invitation-only beta runs on Apple-silicon Macs with macOS 26 or later. Guests join from Safari on a recent iPhone, with any headphones they like.</p></div>
       </details>
       <details>
         <summary>What does PartyParty cost?<i></i></summary>
-        <div class="ans"><p>The public beta is free for the DJ and everyone listening. That describes the beta, not a promise about future pricing.</p></div>
+        <div class="ans"><p>The invitation-only beta is free for the DJ and everyone listening. That describes the beta, not a promise about future pricing.</p></div>
       </details>
     </div>
   </div>
@@ -507,7 +525,13 @@ footer a:hover{color:var(--ink);text-decoration:underline}
 
 <section class="close" id="get">
   <h2 class="h2 rv">Bring a Mac. Start a party.</h2>
-  <a class="btn rv" href="/go/testflight/final" target="_blank" rel="noopener">Join the TestFlight beta</a>
+  <form id="inviteForm" style="max-width:480px;margin:24px auto;text-align:left">
+    <label for="inviteEmail">Email address</label>
+    <input id="inviteEmail" name="email" type="email" autocomplete="email" maxlength="254" required style="display:block;width:100%;padding:16px;margin:8px 0 16px;border:1px solid currentColor;border-radius:12px;font:inherit">
+    <button class="btn" type="submit">Request an invite</button>
+    <p>We will email you about beta access. <a href="/privacy"><u>Privacy policy</u></a></p>
+    <p id="inviteResult" role="status" aria-live="polite"></p>
+  </form>
 </section>
 
 <footer>

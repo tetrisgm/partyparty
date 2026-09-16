@@ -2,7 +2,7 @@
 var SITE_ORIGIN = "https://partyparty.party";
 var DEFAULT_OG_IMAGE = "/img/social-card.png";
 // There is no public download any more: the app reaches people through the
-// permanent TestFlight link, which is the site's only call to action. What
+// invitation-only TestFlight group; the site collects requests for an invite. What
 // remains here is the UPDATE path for Macs already carrying a standalone build
 // - removing that would strand them on whatever version they have, silently.
 // The advertised entry point, /PartyParty-Beta.zip, is gone.
@@ -97,9 +97,7 @@ footer{max-width:760px;margin:0 auto;padding:24px 20px 48px;color:var(--ink3);fo
 @media(max-width:560px){.sectionhead{display:grid}.navlinks .btn:first-child{display:none}}
 `;
 var SVGDEFS = "";
-// One door, the same one the landing page offers. It used to say "Coming to the
-// Mac App Store", which was never true of this app and had sat there for weeks.
-var NAV = `<nav><a class="brand" href="/">PartyParty</a><div class="navlinks"><a class="btn sm" href="https://testflight.apple.com/join/HPRAgyJk" target="_blank" rel="noopener">Join the TestFlight beta</a></div></nav>`;
+var NAV = `<nav><a class="brand" href="/">PartyParty</a><div class="navlinks"><a class="btn sm" href="/#get">Request an invite</a></div></nav>`;
 var TOAST_JS = "";
 function shell({ title, desc, ogImage, url, body }) {
   const pageUrl = absUrl(url || "/");
@@ -121,11 +119,13 @@ function legalResponse(pathname) {
   const body = privacy ? `<div class="page">
     <div class="card">
       <h1>Privacy policy</h1>
-      <p class="sub">Effective July 26, 2026</p>
+      <p class="sub">Updated September 16, 2026</p>
       <h2>What PartyParty does</h2>
-      <p>On ordinary venue Wi-Fi, the Mac app serves live audio and the active party room directly to guests. If the Wi-Fi prevents nearby devices from connecting, the Mac can select relay mode so encrypted guest requests and live audio pass through PartyParty's Cloudflare service while the room is active.</p>
+      <p>On ordinary venue Wi-Fi, the Mac app serves live audio and the active party room directly to guests. If the Wi-Fi prevents nearby devices from connecting and the DJ enables Wi-Fi + cloud, the Mac can send one live stream to PartyParty's relay server, which serves the guests. Cloudflare provides the website, room bootstrap, and certificate setup; it does not carry live audio or guest media.</p>
       <h2>Relay mode</h2>
-      <p>Relay mode is a live transport, not cloud party storage. Live audio, listening status, text posts, reactions, and still photos pass through to the DJ's Mac and are not retained by PartyParty. Photo transfer is capped and throttled so music stays first. Videos are unavailable in relay mode and do not enter the relay. Short rolling HLS media parts and still photos may be cached for up to 60 seconds to avoid repeatedly uploading identical bytes from the Mac. There are no cloud recordings, replays, or public event pages.</p>
+      <p>The relay temporarily holds the rolling live audio buffer and active room data in memory to serve connected guests. Guest interaction is delivered to the DJ's Mac. Photo transfer is capped and throttled so music stays first. Videos are unavailable in relay mode and do not enter the relay. There are no cloud recordings, replays, or public event pages. The DJ's Mac can keep local party folders and guest media.</p>
+      <h2>Beta invitations</h2>
+      <p>If you request a beta invitation, we store your email address and the time of your request so we can contact you about access. This does not create an account or automatically enroll you in TestFlight. Contact support below to ask us to remove your request.</p>
       <h2>Secure room address</h2>
       <p>Each installation receives a random credential and a two-word hostname used only to provision its certificate-backed local room address. This infrastructure identifier is not connected to a PartyParty account or profile.</p>
       <h2>Diagnostics</h2>
@@ -1182,6 +1182,35 @@ var worker_default = {
         headers,
       });
     }
+    if (pathname === "/api/waitlist") {
+      if (request.method !== "POST") return jsonMethodNotAllowed("POST", "POST required");
+      const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
+      if (env.REGISTRATION_RATE_LIMITER && !(await env.REGISTRATION_RATE_LIMITER.limit({ key: `waitlist:${ipHash}` })).success) {
+        return jsonResp(429, { error: "Please try again shortly." }, { "retry-after": "60" });
+      }
+      const parsed = await readJsonResult(request, 2048);
+      if (parsed.tooLarge) return jsonResp(413, { error: "Request too large." });
+      const email = typeof parsed.value?.email === "string" ? parsed.value.email.trim().toLowerCase() : "";
+      if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonResp(400, { error: "Enter a valid email address." });
+      const key = `waitlist/${await sha256Hex("waitlist:" + email)}.json`;
+      if (!await env.DL.head(key)) await env.DL.put(key, JSON.stringify({ email, at: Date.now() }));
+      return jsonResp(200, { ok: true }, { "cache-control": "no-store" });
+    }
+    if (pathname === "/api/waitlist/list") {
+      if (request.method !== "POST") return jsonMethodNotAllowed("POST", "POST required");
+      const body = await readJson(request, 2048);
+      if (!env.ADMIN_KEY || typeof body?.admin !== "string" || await sha256Hex(body.admin) !== await sha256Hex(env.ADMIN_KEY)) {
+        return jsonResp(403, { error: "admin only" }, { "cache-control": "no-store" });
+      }
+      const cursor = typeof body.cursor === "string" ? body.cursor : undefined;
+      const listed = await env.DL.list({ prefix: "waitlist/", limit: 100, cursor });
+      const people = [];
+      for (const object of listed.objects || []) {
+        const raw = await env.DL.get(object.key);
+        if (raw) people.push(await raw.json());
+      }
+      return jsonResp(200, { people, nextCursor: listed.truncated ? listed.cursor : null }, { "cache-control": "no-store" });
+    }
     if (pathname === "/api/relay-canary") {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return jsonMethodNotAllowed("GET, HEAD", "GET or HEAD required");
@@ -1214,7 +1243,7 @@ var worker_default = {
       return new Response(null, {
         status: 302,
         headers: {
-          location: "https://testflight.apple.com/join/HPRAgyJk",
+          location: "/#get",
           "cache-control": "no-store",
           "referrer-policy": "no-referrer",
         },
