@@ -140,7 +140,6 @@ func (m *Manager) planeCycleTo(ctx context.Context, hooks PlaneHooks, target rel
 			return
 		}
 	}
-
 	d, err := m.drainFrom(ctx, target)
 	if err != nil {
 		return
@@ -165,6 +164,9 @@ func (m *Manager) planeCycleTo(ctx context.Context, hooks PlaneHooks, target rel
 			}
 		}
 	}
+	// Deliver this cycle's writes/presence before the optional bounded clock
+	// exchange. Older origins can reject calibration without losing room work.
+	_ = m.calibrateClockTo(ctx, target)
 }
 
 func (m *Manager) publishSnapshotTo(ctx context.Context, target relayTarget, kind string, body json.RawMessage, delaySec float64) error {

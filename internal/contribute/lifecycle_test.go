@@ -175,7 +175,7 @@ func TestPlaneCycleUsesOneTargetSnapshot(t *testing.T) {
 	secondRec.mu.Lock()
 	secondRequests := append([]string(nil), secondRec.requests...)
 	secondRec.mu.Unlock()
-	if len(firstRequests) != 2 || len(secondRequests) != 0 {
+	if len(firstRequests) != 3 || len(secondRequests) != 0 {
 		t.Fatalf("one plane cycle split across targets: first=%v second=%v", firstRequests, secondRequests)
 	}
 	if len(applied) != 1 || applied[0] != `{"from":"first"}` {

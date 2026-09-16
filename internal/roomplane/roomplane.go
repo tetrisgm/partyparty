@@ -100,6 +100,7 @@ type Room struct {
 	listeners map[string]*listener
 	writes    []Write
 	now       func() time.Time
+	clock     *clockAnchor
 
 	// versions assigns each kind a number that changes exactly when its bytes
 	// change. It is what lets a guest ask "has this changed since I looked"
@@ -134,6 +135,10 @@ func (r *Room) Publish(kind string, body json.RawMessage, delaySec float64) bool
 	stored := make(json.RawMessage, len(body))
 	copy(stored, body)
 	r.mu.Lock()
+	if kind == "clock" {
+		defer r.mu.Unlock()
+		return r.publishClock(stored)
+	}
 	if delaySec > 0 {
 		r.delaySec = delaySec
 	}
@@ -298,6 +303,7 @@ func (r *Room) Reset() {
 	r.listeners = make(map[string]*listener)
 	r.writes = nil
 	r.delaySec = 0
+	r.clock = nil
 	// verCounter deliberately survives, so a post-reset version can never
 	// collide with an ETag a guest is still holding. Wake parked readers: their
 	// kind is gone and they should answer "not ready" rather than sit out the

@@ -67,6 +67,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
+	case rest == "__pp/time":
+		if !h.authorized(r, room) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET required", http.StatusMethodNotAllowed)
+			return
+		}
+		received := time.Now().UnixMilli()
+		noStore(w.Header())
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]int64{"received": received, "sent": time.Now().UnixMilli()})
 	case rest == "__pp/room-health":
 		h.roomHealth(w, room)
 	case strings.HasPrefix(rest, "__pp/plane/"):
@@ -375,6 +388,20 @@ func (h *Handler) roomAPI(w http.ResponseWriter, r *http.Request, token, endpoin
 	noStore(w.Header())
 
 	switch {
+	case endpoint == "time" && r.Method == http.MethodGet:
+		received, uncertainty, calibrated := plane.SourceTime()
+		if !calibrated {
+			http.Error(w, "room clock unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		sent, _, calibrated := plane.SourceTime()
+		if !calibrated || sent < received {
+			http.Error(w, "room clock unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]float64{"t": sent, "received": received, "sent": sent, "uncertaintyMs": uncertainty})
 	// The heartbeat is matched by ENDPOINT before the read branch can claim it,
 	// because the listener page sends it as a plain GET (fetch with no method).
 	// The Mac's own server accepts that, and this origin must speak the page's
