@@ -1030,7 +1030,7 @@
       return djPalette[Math.abs(Number(index) || 0) % djPalette.length];
     }
     let switchSequence = 0, switchingTo = null, failedDJ = null;
-    let timelineOriginMs = null;
+    let timelineOriginMs = null, timelinePrecisionMs = 500;
     const mediaNow = () => player.currentTime;
     let attached = false, ready = false; // pre-buffer state (hls.js path)
     let PREBUF = 2.5;
@@ -1214,35 +1214,47 @@
       return { stalls: sumStalls, stallMs, maxStallMs: sumMaxStallMs, recovers: sumRecovers, audibleSeeks, playMs: playing, maxLat: Math.round(sumMaxLatency * 10) / 10, ev: evSeq };
     }
 
-    // NTP-style clock sync to the Mac (the master clock) so every phone computes
-    // the same desired media position. Sequential samples observe separate Wi-Fi
-    // scheduling windows; a median of the fastest samples rejects one asymmetric
-    // request without turning a slow request into the room clock.
+    // Room clock. Keep wall time on a monotonic anchor: changing a phone's
+    // clock must not look like playback drift. An expired or uncertain estimate
+    // disables timing-based recovery, never audio.
     let clockOffset = 0, clockSynced = false, clockBestRTT = 0, clockUncertainty = 0, clockSyncedAt = 0, clockSyncing = null;
-    const serverNow = () => Date.now() + clockOffset;
+    let clockEpoch = 0, clockAnchor = 0, clockGeneration = 0;
+    const serverNow = () => performance.now() + clockEpoch;
+    function clockReliable(){
+      const age = performance.now() - clockAnchor;
+      return clockSynced && age >= 0 && age < 75000 && clockUncertainty <= 100
+        // Some OSes stop performance.now() during sleep. A wall/monotonic
+        // disagreement invalidates telemetry until a fresh exchange completes.
+        && Math.abs((Date.now() - clockSyncedAt) - age) < 1000;
+    }
     function clockURL(){
       const peer = selectedDJId && discoveredPeers.find((candidate) => candidate.id === selectedDJId);
       return peer && peer.roomUrl ? peer.roomUrl + '/api/time' : '/api/time';
     }
     function resetClock(){
+      clockGeneration++;
       clockOffset = 0; clockSynced = false; clockBestRTT = 0;
       clockUncertainty = 0; clockSyncedAt = 0; clockSyncing = null;
+      clockEpoch = 0; clockAnchor = 0;
     }
     async function clockSample(endpoint){
       const ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
       const timeout = ac ? setTimeout(() => { try { ac.abort(); } catch (e) {} }, 1500) : 0;
-      const t0 = Date.now();
+      const t0 = performance.now();
       try {
         const response = await fetch(endpoint, { cache: 'no-store', signal: ac ? ac.signal : undefined });
         if (!response.ok) return null;
         const body = await response.json();
-        const t3 = Date.now();
-        const received = Number(body.received != null ? body.received : body.t);
-        const sent = Number(body.sent != null ? body.sent : body.t);
-        if (!Number.isFinite(received) || !Number.isFinite(sent) || sent < received) return null;
-        const rtt = Math.max(0, (t3 - t0) - (sent - received));
+        const t3 = performance.now();
+        const received = body.received != null ? body.received : body.t;
+        const sent = body.sent != null ? body.sent : body.t;
+        const uncertainty = body.uncertaintyMs == null ? 0 : body.uncertaintyMs;
+        if (!Number.isFinite(received) || !Number.isFinite(sent) || sent < received
+            || !Number.isFinite(uncertainty) || uncertainty < 0) return null;
+        const rtt = (t3 - t0) - (sent - received);
+        if (rtt < -2 || t3 < t0) return null;
         const off = ((received - t0) + (sent - t3)) / 2;
-        return { rtt, off };
+        return { rtt: Math.max(0, rtt), off, uncertainty };
       } catch (e) {
         return null;
       } finally {
@@ -1251,7 +1263,8 @@
     }
     async function syncClock(){
       if (clockSyncing) return clockSyncing;
-      clockSyncing = (async () => {
+      const generation = clockGeneration;
+      const pending = (async () => {
         const endpoint = clockURL();
         const samples = [];
         for (let i = 0; i < 6; i++) {
@@ -1259,8 +1272,10 @@
           if (sample) samples.push(sample);
           if (i < 5) await new Promise(resolve => setTimeout(resolve, 80));
         }
-        if (endpoint !== clockURL()) return;
-        samples.sort((a, b) => a.rtt - b.rtt);
+        if (generation !== clockGeneration || endpoint !== clockURL()) return;
+        // A fast reply from a relay can still carry an uncertain source clock.
+        // Prefer the complete error budget, not just the final network hop.
+        samples.sort((a, b) => (a.rtt + 2*a.uncertainty) - (b.rtt + 2*b.uncertainty));
         const usable = samples.filter(s => s.rtt < 100).slice(0, 3);
         // Keep a 300ms fallback for a temporarily busy access point. It is
         // diagnostic/degraded, never a reason to open unverified audio.
@@ -1268,14 +1283,20 @@
         if (chosen.length){
           const offsets = chosen.map(s => s.off).sort((a, b) => a - b);
           const middle = Math.floor(offsets.length / 2);
-          clockOffset = offsets.length % 2 ? offsets[middle] : (offsets[middle - 1] + offsets[middle]) / 2;
-          clockBestRTT = chosen[0].rtt;
-          clockUncertainty = Math.max(clockBestRTT / 2, offsets[offsets.length - 1] - offsets[0]);
-          clockSynced = true; clockSyncedAt = Date.now();
+          clockEpoch = offsets.length % 2 ? offsets[middle] : (offsets[middle - 1] + offsets[middle]) / 2;
+          clockBestRTT = Math.min(...chosen.map(s => s.rtt));
+          // Include EVERY selected sample's possible path asymmetry, plus the
+          // relay's source-clock uncertainty. The fastest RTT alone understates
+          // the error of the median offset.
+          clockUncertainty = Math.max(...chosen.map(s => Math.abs(s.off - clockEpoch) + s.rtt / 2 + s.uncertainty));
+          clockAnchor = performance.now(); clockSyncedAt = Date.now();
+          clockOffset = serverNow() - clockSyncedAt;
+          clockSynced = true;
           logEvent('clock', { rtt: rnd(clockBestRTT), off: rnd(clockOffset), uncertainty: rnd(clockUncertainty), samples: samples.length, used: chosen.length });
         }
       })();
-      try { await clockSyncing; } finally { clockSyncing = null; }
+      clockSyncing = pending;
+      try { await pending; } finally { if (clockSyncing === pending) clockSyncing = null; }
     }
 
     function currentTimelineOrigin(){
@@ -1287,19 +1308,53 @@
       } catch (e) { return null; }
     }
 
+    // A DATERANGE DataCue retains the fractional native timeline origin;
+    // WebKit's getStartDate() rounds it to a whole second. Keep this function
+    // self-contained so the native lab can exercise the shipping implementation.
+    function readNativeTimeline(media, roundedOrigin) {
+      if (!Number.isFinite(roundedOrigin)) return null;
+      const observations = new Map();
+      for (const track of media.textTracks) {
+        if (track.kind !== 'metadata') continue;
+        track.mode = 'hidden';
+        const cues = track.cues;
+        if (!cues) continue;
+        for (let i = cues.length-1; i >= 0 && observations.size < 8; i--) {
+          const cue = cues[i];
+          if (cue.type !== 'com.apple.quicktime.HLS' || cue.value?.key !== 'X-PP-TIME'
+              || !Number.isFinite(cue.startTime) || cue.startTime <= 0) continue;
+          const stamp = Number(cue.value.data);
+          const origin = stamp - cue.startTime*1000;
+          if (!Number.isFinite(stamp) || Math.abs(origin-roundedOrigin) > 502) continue;
+          observations.set(stamp, origin);
+        }
+      }
+      const origins = [...observations.values()].sort((a,b)=>a-b);
+      if (origins.length < 2 || origins[origins.length-1]-origins[0] > 10) return null;
+      return origins[Math.floor(origins.length/2)];
+    }
+    function nativeTimelineSample(){
+      const rounded = currentTimelineOrigin();
+      const precise = readNativeTimeline(player, rounded);
+      return { origin: precise == null ? rounded : precise, precision: precise == null ? 500 : 10 };
+    }
+    const latencyUncertaintyMs = () => clockUncertainty + (useNative ? timelinePrecisionMs : 0);
+
     // PROGRAM-DATE-TIME is Apple's cross-device synchronization frame. Native
     // Safari's bridge can briefly disappear while AVPlayer rebuilds a seek, so
     // startup latches a stable origin and this function never trusts a single
     // transient getStartDate() call at the audio gate.
     function measureProgramLatency(){
       try {
-        if (clockSynced && hls && hls.playingDate){
+        if (clockReliable() && hls && hls.playingDate){
           const lat = (serverNow() - hls.playingDate.getTime()) / 1000;
           if (lat > 0 && lat < 60) return lat;
         }
       } catch (e) {}
       try {
-        if (clockSynced && timelineOriginMs != null){
+        const mapping = useNative ? nativeTimelineSample() : { origin: null };
+        if (clockReliable() && timelineOriginMs != null && mapping.origin != null
+            && Math.abs(mapping.origin - timelineOriginMs) < 2 && mapping.precision === timelinePrecisionMs){
           const lat = (serverNow() - (timelineOriginMs + mediaNow() * 1000)) / 1000;
             if (lat > 0 && lat < 60) return lat;
         }
@@ -2030,6 +2085,7 @@
     // "muted, staying warm". iOS keeps foreground muted playback going; if it
     // gets suspended while muted+locked, resume (foreground) restarts it.
     function pauseGuest(){
+      cancelNativeJoin();
       userPaused = true;
       player.muted = true; setPlayingUI(false); setStatus('paused'); logEvent('mute');
     }
@@ -2038,6 +2094,10 @@
     function resumeGuest(){
       if (playBlocked) { retryPlayback('resume'); return; }
       userPaused = false; yielded = false; claimAudio();
+      if (nativeJoin.active) return;
+      if (useNative && audibleGeneration !== attachGeneration) {
+        beginAudible('resume'); play().catch(()=>{}); return;
+      }
       if (!player.paused && player.readyState >= 2 && !stale()) {
         player.muted = false;
         if (!sumPlayStart) sumPlayStart = Date.now();
@@ -2085,6 +2145,7 @@
 
     function attach(){
       if (!chosenStream() || !live || !streamReady) return false;
+      cancelNativeJoin();
       const src = chosenStream();
       attachGeneration++;
       timelineOriginMs = null;
@@ -2173,20 +2234,113 @@
       catch (e) { setStatus('player error - reload the page'); return false; }
     }
 
-    // Native AVPlayer joins MediaMTX's LL-HLS live edge directly. The page never
-    // seeks during startup; it measures PROGRAM-DATE-TIME latency after playback
-    // begins and only corrects sustained drift while the phone is visible.
+    // Position a fresh native attachment while muted, then leave it passive.
+    // A seek consumes time: compensate for its observed completion delay so
+    // the landed source sample, rather than the requested sample, meets T + D.
     const SYNC_WARN_AT = 1.0;
     const JOIN_WATCHDOG_MS = 15000;
     let attachGeneration = 0, audibleGeneration = -1, openedGeneration = -1;
     let audibleReason = 'join', listenRequestedAt = 0, playBlocked = false;
     const roomTarget = () => latencyTarget || ROOM_TARGET_FALLBACK;
+    function createNativeJoin({ media, now, monotonic, reference, reliable, target, eligible, visible, finish, event, earliest = () => -Infinity }) {
+      let active = false, began = 0, phase = 'clock', attempts = 0;
+      let knownOrigin = null, lastSeek = 0, seekCost = 0;
+      function done(reason, error = null) {
+        active = false;
+        finish({ reason, error, attempts, elapsed: monotonic()-began });
+      }
+      function start() {
+        active = true; began = monotonic(); phase = 'clock'; attempts = 0;
+        knownOrigin = null; lastSeek = 0; seekCost = 0;
+        media.muted = true;
+      }
+      function cancel() { active = false; knownOrigin = null; }
+      function tick() {
+        if (!active) return;
+        if (!eligible()) { cancel(); return; }
+        if (!visible()) { done('background'); return; }
+        const elapsed = monotonic()-began;
+        if (elapsed >= 12000) { done('alignment-timeout'); return; }
+        const mapping = reference();
+        if (Number.isFinite(mapping.origin)) knownOrigin = mapping.origin;
+        if (!Number.isFinite(mapping.rounded) || (knownOrigin != null && Math.abs(mapping.rounded-knownOrigin)>502)) knownOrigin = null;
+        // Native metadata may briefly disappear during a seek. The cached
+        // origin belongs ONLY to this attachment and must still match WebKit's
+        // rounded origin. All state is discarded on cancellation/re-attachment.
+        if (!reliable() || knownOrigin == null) {
+          if (elapsed >= 6000) done('clock-unavailable');
+          return;
+        }
+        if (media.seeking || media.paused || media.readyState < 3) return;
+        const stamp = knownOrigin + media.currentTime*1000;
+        const error = (now()-stamp)/1000-target();
+        if (phase === 'settling') {
+          if (monotonic()-lastSeek < 800) return;
+          seekCost = Math.max(0, Math.min(.8, seekCost+error));
+          phase = 'clock';
+        }
+        if (Math.abs(error) <= .04 && stamp >= earliest()) { done('aligned', error); return; }
+        if (attempts >= 8) { done('alignment-missed', error); return; }
+        const desired = now()-target()*1000+seekCost*1000;
+        // A stale attachment may seek forward across the previous audible
+        // sample immediately; only the destination must respect this floor.
+        if (desired < earliest()) return;
+        const position = (desired-knownOrigin)/1000;
+        let available = false;
+        for (let i=0; i<media.seekable.length; i++) {
+          if (position >= media.seekable.start(i) && position < media.seekable.end(i)-.1) available = true;
+        }
+        if (!available || !media.muted) return;
+        phase = 'settling'; lastSeek = monotonic(); attempts++;
+        media.currentTime = position;
+        event({ position, seekCost, attempt: attempts });
+      }
+      return { start, cancel, tick, get active() { return active; } };
+    }
+    let nativeJoinTimer = 0, nativeJoinGeneration = -1;
+    let lastAudibleProgramMs = -Infinity, lastAudibleStream = '';
+    const nativeJoin = createNativeJoin({
+      media: player, now: serverNow, monotonic: () => performance.now(), target: roomTarget,
+      reference: () => {
+        const rounded = currentTimelineOrigin();
+        return { rounded, origin: readNativeTimeline(player, rounded) };
+      },
+      reliable: () => clockReliable() && clockUncertainty < 40,
+      eligible: () => nativeJoinGeneration === attachGeneration && live && streamReady && !userPaused && !yielded && !playBlocked,
+      visible: () => document.visibilityState === 'visible',
+      earliest: () => lastAudibleStream === chosenStream() ? lastAudibleProgramMs : -Infinity,
+      event: data => logEvent('join-position', data),
+      finish: result => {
+        clearInterval(nativeJoinTimer); nativeJoinTimer = 0;
+        logEvent('join-alignment', result);
+        if (nativeJoinGeneration !== attachGeneration || !live || !streamReady || userPaused || yielded || playBlocked) return;
+        if ((player.seeking && result.reason !== 'background') || player.error) { showPlayFailure('Could not synchronize. Tap Retry.'); return; }
+        player.muted = false;
+        if (player.paused) player.play().catch(() => showPlayFailure('Tap Retry to start playback.'));
+        if (!sumPlayStart) sumPlayStart = Date.now();
+        setPlayingUI(true); setStatus('live');
+        reportAudioOpen(measureLatency());
+      },
+    });
+    function cancelNativeJoin(){
+      if (nativeJoin.active) audibleGeneration = -1;
+      nativeJoin.cancel(); clearInterval(nativeJoinTimer); nativeJoinTimer = 0;
+    }
     function beginAudible(reason){
       if (audibleGeneration === attachGeneration) return false;
       audibleGeneration = attachGeneration;
       audibleReason = reason || 'join';
       listenRequestedAt = Date.now();
-      player.muted = false;
+      if (useNative && document.visibilityState === 'visible') {
+        nativeJoinGeneration = attachGeneration;
+        nativeJoin.start();
+        clearInterval(nativeJoinTimer);
+        nativeJoinTimer = setInterval(() => {
+          nativeJoin.tick();
+          if (!nativeJoin.active) { clearInterval(nativeJoinTimer); nativeJoinTimer = 0; }
+        }, 50);
+        setStatus('syncing…');
+      } else player.muted = false;
       setPlayingUI(true);
       const generation = attachGeneration;
       setTimeout(() => {
@@ -2206,6 +2360,8 @@
       });
     }
     function showPlayFailure(message){
+      cancelNativeJoin();
+      audibleGeneration = -1;
       playBlocked = true;
       player.muted = true;
       setPlayingUI(false);
@@ -2300,7 +2456,8 @@
     function onClaim(msg){
       if (!msg || msg.tabId === tabId || msg.ts <= myClaim) return;
       myClaim = msg.ts; // adopt so we don't out-race a fresher claim later
-      if (started && !userPaused && !player.muted && !player.paused) {
+      if (nativeJoin.active || (started && !userPaused && !player.muted && !player.paused)) {
+        cancelNativeJoin();
         yielded = true;
         // MUTE as well as pause: any path that later resurrects playback
         // (DJ stop→restart auto-resume, version self-reload) then comes back
@@ -2319,8 +2476,16 @@
 
     btn.addEventListener('click', () => {
       claimPlaybackSession(); // in-gesture: audio must ignore the Silent switch
+      if (nativeJoin.active) { pauseGuest(); return; }
       // A yielded tab (another tab took the audio) reclaims on tap.
-      if (yielded) { yielded = false; claimAudio(); userPaused = false; recoverPlayback('tab-reclaim'); return; }
+      if (yielded) {
+        yielded = false; claimAudio(); userPaused = false;
+        if (!started) {
+          if (!attached && !attachSafe()) return;
+          beginAudible('tab-reclaim'); play().catch(()=>{});
+        } else recoverPlayback('tab-reclaim');
+        return;
+      }
       if (playBlocked) { retryPlayback('retry'); return; }
       // Interruption recovery: element paused by the SYSTEM (call/Siri) or
       // STALLED (no current data - the frozen-tab case) while not deliberately
@@ -2412,6 +2577,14 @@
         lastProgress = Date.now();
         recoveringUntil = 0;
       }
+      if (useNative && audibleActive() && clockReliable()) {
+        const mapping = nativeTimelineSample();
+        if (mapping.origin != null) {
+          if (lastAudibleStream !== chosenStream()) lastAudibleProgramMs = -Infinity;
+          lastAudibleStream = chosenStream();
+          lastAudibleProgramMs = Math.max(lastAudibleProgramMs, mapping.origin+current*1000+mapping.precision);
+        }
+      }
     }
     player.addEventListener('timeupdate', sampleProgress);
     setInterval(sampleProgress, 1000);
@@ -2422,7 +2595,7 @@
       // from Safari, Control Center, or the guest and can move this phone away
       // from the room, so retain it as an important diagnostic.
       logEvent(audible ? 'external-seek' : 'seek',
-        { pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), app: false });
+        { pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), app: nativeJoin.active });
     });
     player.addEventListener('seeked', sampleProgress);
     // 4s of zero progress is a starving player, not a buffering one. The old
@@ -2449,14 +2622,18 @@
     // stable getStartDate() samples so measurement returns without touching
     // playback.
     function tryRestoreTimelineOrigin(){
-      if (!useNative || timelineOriginMs != null) return false;
-      const value = currentTimelineOrigin();
-      if (value == null) return false;
-      if (value === originCandidate) originRepeats++;
+      if (!useNative) return false;
+      const mapping = nativeTimelineSample(), value = mapping.origin;
+      if (value != null && timelineOriginMs != null && Math.abs(value - timelineOriginMs) < 2
+          && mapping.precision === timelinePrecisionMs) return true;
+      timelineOriginMs = null;
+      timelinePrecisionMs = mapping.precision;
+      if (value == null) { originCandidate = null; originRepeats = 0; return false; }
+      if (originCandidate != null && Math.abs(value - originCandidate) < 2) originRepeats++;
       else { originCandidate = value; originRepeats = 1; }
       if (originRepeats >= 3) {
         timelineOriginMs = originCandidate;
-        logEvent('timeline', { origin: originCandidate, samples: originRepeats, why: 'restore' });
+        logEvent('timeline', { origin: originCandidate, precision: timelinePrecisionMs, samples: originRepeats, why: 'restore' });
         originCandidate = null; originRepeats = 0;
         return true;
       }
@@ -2464,6 +2641,7 @@
     }
     function recoverPlayback(reason){
       if (!live || !streamReady || userPaused || yielded) return;
+      if (nativeJoin.active) return;
       const broken = !!player.error || player.readyState === 0 || stale();
       if (!broken && !player.paused) return;
       if (Date.now() < recoveringUntil) { player.play().catch(() => {}); return; }
@@ -2501,7 +2679,7 @@
         return;
       }
       const lateBy = lat - roomTarget();
-      if (lateBy < OUTLIER_LATE_BY) {
+      if (lateBy - latencyUncertaintyMs() / 1000 < OUTLIER_LATE_BY) {
         outlierBeats = 0;
         outlierCooldownMs = OUTLIER_COOLDOWN_MS; // on target: the last correction landed, restore full credit
         return;
@@ -2575,6 +2753,9 @@
       }, delay);
     });
     document.addEventListener('visibilitychange', () => {
+      // Finish the muted startup before background timers can be suspended.
+      // The native engine completes any pending seek and continues on its own.
+      if (nativeJoin.active) nativeJoin.tick();
       if (document.visibilityState !== 'visible') return;
       syncClock();
       // Coming back to the tab: reconnect if the interruption outlived the
@@ -2625,7 +2806,7 @@
           }
         });
         navigator.mediaSession.setActionHandler('pause', () => {
-          if (started) pauseGuest();
+          if (started || nativeJoin.active) pauseGuest();
         });
         mediaSessionHandlersRegistered = true;
       } catch (e) {}
@@ -2640,6 +2821,7 @@
     let resumeWanted = false, resumeTries = 0;
     try { resumeWanted = sessionStorage.getItem('pp.resume') === '1'; sessionStorage.removeItem('pp.resume'); } catch (e) {}
     function resetTransport(){
+      cancelNativeJoin();
       try { if (hls) { hls.destroy(); hls = null; } } catch (e) {}
       started = false;
       try { player.removeAttribute('src'); player.load(); } catch (e) {}
@@ -2927,7 +3109,7 @@
         'target   : ' + roomTarget().toFixed(1) + ' s  err=' + (lat != null ? ((lat - roomTarget()) >= 0 ? '+' : '') + (lat - roomTarget()).toFixed(3) + 's' : '?') + '\n' +
         'timeline : pdt=' + (measureProgramLatency() != null ? measureProgramLatency().toFixed(3) : 'n/a') + '\n' +
         'buffer   : ' + bufferedAhead().toFixed(1) + ' s ahead  ·  LL  ·  v' + PAGE_VERSION + '\n' +
-        'clock    : ' + (clockSynced ? (clockOffset >= 0 ? '+' : '') + Math.round(clockOffset) + ' ms ±' + Math.round(clockUncertainty) : 'syncing…') + '\n' +
+        'clock    : ' + (clockReliable() ? (clockOffset >= 0 ? '+' : '') + Math.round(clockOffset) + ' ms ±' + Math.round(latencyUncertaintyMs()) : 'syncing…') + '\n' +
         'stream   : gen=' + streamGeneration + ' ready=' + streamReady + '\n' +
         'stalls   : ' + sumStalls + '  total=' + Math.round(sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0)) + 'ms' + '\n' +
         'seeks    : audible=' + audibleSeeks;
@@ -2945,12 +3127,9 @@
     setInterval(() => {
       if (!started) return;
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
-      // Live-edge path (room sync off, the default) bypasses the align transaction
-      // that normally latches the native timeline origin, and the shallow live-edge
-      // buffer keeps the health watchdog's restore (gated on buf>1) from ever
-      // running - so on iOS the origin stays null and latency reads "-- s" forever.
-      // Re-derive it here passively (getStartDate only, no seek, no buffer floor).
-      if (timelineOriginMs == null) tryRestoreTimelineOrigin();
+      // Native HLS can replace its timeline after a discontinuity. Revalidate
+      // the mapping even after the first attachment; never steer from an old one.
+      tryRestoreTimelineOrigin();
       const lat = measureLatency();
       reportAudioOpen(lat);
       if (lat != null && lat > sumMaxLatency) sumMaxLatency = lat;
@@ -2983,7 +3162,7 @@
         rs: player.readyState, rate: player.playbackRate, muted: player.muted, ll: true,
         stalls: sumStalls, stallMs: sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0),
         maxStallMs: sumMaxStallMs, progressAge: lastProgress ? Date.now() - lastProgress : 0,
-        audibleSeeks,
+        audibleSeeks, uncertaintyMs: Math.round(latencyUncertaintyMs()),
       });
       stalledSinceBeat = false;
       if (debug) showDebug(lat);
@@ -2998,7 +3177,7 @@
       delayBadge.textContent = lat != null ? lat.toFixed(2) + ' s' : (started ? 'syncing...' : '-- s');
       delayBadge.title = lat == null
         ? 'Waiting for a synchronized playback clock'
-        : 'Room target ' + roomTarget().toFixed(2) + ' s; sync error ' + (error >= 0 ? '+' : '') + error.toFixed(2) + ' s; ' + syncReference();
+        : 'Room target ' + roomTarget().toFixed(2) + ' s; sync error ' + (error >= 0 ? '+' : '') + error.toFixed(2) + ' s; timing uncertainty ±' + Math.round(latencyUncertaintyMs()) + ' ms';
     }
     updateDelayBadge();
     setInterval(updateDelayBadge, 500);

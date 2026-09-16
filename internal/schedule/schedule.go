@@ -1,38 +1,12 @@
-// Package schedule owns the room's playback schedule.
+// Package schedule owns the fixed room target and shared playlist metadata.
 //
-// Every chunk of audio carries the wall-clock time it was captured, as
-// EXT-X-PROGRAM-DATE-TIME. The room publishes one delay D, and the contract is
-// simply: a chunk stamped T is played at T + D. Direct, local, and relayed
-// guests all obey the same absolute instant, so they agree by construction
-// rather than by coincidence.
+// All paths retain the source PROGRAM-DATE-TIME and carry the same hints. HLS
+// hints do not schedule speakers: real AVPlayer tests show that EXT-X-START
+// does not enforce Delay. ClockRanges supplies a precise native media-clock
+// reference so the listener can position a muted attachment against source time.
 //
-// D is DECLARED, never discovered. The shipping geometry expresses the fixed
-// three-second cushion with an EXT-X-START attachment pin in the multivariant
-// playlist and a modest part hold-back in media playlists. PartyParty does not
-// command AVPlayer after attachment and never adapts D to a venue or listener.
-//
-// This lives in its own package because the schedule has to be identical on
-// every path a guest can arrive by, and there is more than one such path: the
-// Mac serves direct guests itself, and pushes the same stream to a relay origin
-// for guests on a network that isolates devices. When only the direct path
-// applied the rewrite, relayed guests silently ran on the muxer's raw hold-back
-// instead of the declared one, which is exactly the disagreement the schedule
-// exists to prevent. One implementation, imported by both, makes that
-// impossible rather than merely unlikely.
-//
-// Two properties are non-negotiable and are enforced by tests:
-//
-//  1. D NEVER responds to listener conditions. A slow device, or a hundred slow
-//     devices, must never lengthen the delay for anyone else. The product has
-//     already been burned once by a room-wide value that tracked room health,
-//     which made healthy players move whenever a struggling peer changed it.
-//  2. Devices that fall behind are corrected strictly per device with a fresh
-//     visible-only native attachment, never while locked or backgrounded and
-//     never by changing a peer's target.
-//
-// What the schedule buys is coherence, not adaptation: every device targets the
-// same declared point instead of independently choosing one, which removes
-// spread without adding latency.
+// The target never adapts to individual listeners. See docs/PLAYBACK-CONTRACT.md
+// for the release checks and docs/synchronization.md for measured limitations.
 package schedule
 
 import (
@@ -41,54 +15,10 @@ import (
 	"strings"
 )
 
-// MEASURED 2026-09-11, and it contradicts the comments below. Read this first.
-//
-// The EXT-X-START pin this package authors into the multivariant playlist does
-// NOT move where AVPlayer attaches. Stripping it changed attachment by 0.00s
-// over a ten-minute soak, against a pass-through control arm that reproduced
-// the unproxied path within 0.01s. The three seconds a direct listener actually
-// sits back is the HLS default hold-back of three target durations: gohlslib
-// rounds TARGETDURATION to an integer second, so 500ms segments make that
-// default 3.0s. The room's cushion is a coincidence of that rounding, not
-// something this code obtains, and it would move on its own if the segment
-// duration changed. An explicit HOLD-BACK, which the media playlist does not
-// declare, does move the attachment point, and only upward: below three target
-// durations AVPlayer refuses the playlist outright.
-//
-// Relayed guests receive no pin at all. RewritePlaylist only pins a body
-// containing EXT-X-STREAM-INF, and internal/contribute publishes the MEDIA
-// playlist alone.
-//
-// The "3.11s flat" receipt cited below is real and is now kept at
-// docs/receipts/soak-20260806-build125.40-260-UNKNOWN-URL-3.11s.log, but it does
-// not record which URL it measured, so it does not establish that the pin did
-// the work. The full lab is docs/receipts/soak-lab-20260911/.
-//
-// Nothing here has been changed on that evidence. Geometry still moves only
-// behind the pre-upload real-AVPlayer soak on the real guest path and the
-// supervised set that AGENTS.md requires.
-
-// PartHoldBack is the modest media-playlist floor, in seconds. It remains a
-// constant of the design rather than a network tuning knob, and must stay inside
-// the region where parts exist. It is intentionally not stretched to the full
-// room target; the three-second attachment point is authored separately in the
-// multivariant playlist.
-//
-// STABILITY DELIVERY (2026-08-05, third attempt, BENCHED FIRST): the owner's
-// fixed 3s cushion ships as EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES in the
-// MULTIVARIANT playlist - the exact form the July D=3 era ran live for weeks
-// (commit affebd3), recovered by reading that code instead of paraphrasing
-// it. Both details matter: the tag lives in the multivariant playlist, and
-// PRECISE=YES. The two failed forms are never-again: PART-HOLD-BACK=2.9
-// points outside the parts region (AVPlayer snapped a listener to the
-// window's oldest edge), and the tag in the MEDIA playlist without PRECISE
-// measured 25.00s from the edge on the soak harness - AVPlayer applied the
-// offset from the wrong end. The shipped form measured 3.11s flat on a muted
-// real AVPlayer against the live stream BEFORE upload, per the contract's soak
-// rule. That receipt was cited as "scratchpad soak-july-form.log", a path that
-// has never existed in this repository; the ten-minute 3.11s log it describes
-// is docs/receipts/soak-20260806-build125.40-260-UNKNOWN-URL-3.11s.log, and it
-// does not name the URL it measured.
+// PartHoldBack is a lower bound on the upstream part hold-back. The historical
+// multivariant EXT-X-START hint is retained for compatibility; it does not
+// establish a shared presentation deadline on native AVPlayer. The HTTP-only
+// pin/hold-back experiments are in docs/receipts/soak-lab-20260911/.
 const PartHoldBack = 0.9
 
 // Delay is the room's fixed published D: what a guest should expect between a
@@ -98,9 +28,8 @@ const Delay = 3.0
 
 // RewritePlaylist authors the schedule into whichever playlist tier it is
 // given. A multivariant playlist gains the EXT-X-START attachment pin; a
-// media playlist gets the declared PART-HOLD-BACK. Everything else passes
-// through unmodified: media bytes, timestamps, segment and part URIs, and
-// PROGRAM-DATE-TIME, which is the stamp the whole schedule is built on.
+// media playlist gets the PART-HOLD-BACK floor and clock-reference date ranges.
+// Media bytes, timestamps, segment/part URIs and PROGRAM-DATE-TIME are preserved.
 func RewritePlaylist(body []byte) []byte {
 	text := string(body)
 	if strings.Contains(text, "#EXT-X-STREAM-INF") {
@@ -122,12 +51,12 @@ func RewritePlaylist(body []byte) []byte {
 		}
 	}
 	if !changed {
-		return body
+		return ClockRanges(body)
 	}
-	return []byte(strings.Join(lines, "\n"))
+	return ClockRanges([]byte(strings.Join(lines, "\n")))
 }
 
-// rewriteMultivariant pins the room's attachment point. Ours is
+// rewriteMultivariant retains the legacy preferred-start hint. Ours is
 // authoritative: any upstream EXT-X-START is dropped, and the pin lands
 // directly after EXT-X-VERSION so it reads as part of the header.
 func rewriteMultivariant(text string) []byte {

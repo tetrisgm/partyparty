@@ -2,9 +2,7 @@ package server
 
 import "partyparty/internal/schedule"
 
-// roomLatencyTarget is the single client-side playout target and is the
-// schedule's published D by definition - one number, declared once. Native
-// AVPlayer joins at the declared hold-back and the visible-only governor
-// corrects sustained drift toward this target without touching
-// locked/background playback.
+// roomLatencyTarget publishes the room's fixed intended delay. It is not proof
+// that AVPlayer honors that deadline; native attachment and measured latency
+// are documented separately in docs/synchronization.md.
 const roomLatencyTarget = schedule.Delay
