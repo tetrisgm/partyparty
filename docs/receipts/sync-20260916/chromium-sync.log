@@ -1,0 +1,23 @@
+>> browser=chromium scenario=sync
+>> ffmpeg=/Users/shokunin/dev/partyparty/assets/ffmpeg
+>> mediamtx=/Users/shokunin/dev/partyparty/assets/mediamtx
+>> keeping work dir: /var/folders/tq/_6yt1vp555qcj2jwgxmz060w0000gn/T/pp-stream-e2e-atzRqE
+>> building dev partyparty-server
+PASS server stream readiness: generation=1789535204250 real=3.925s gaps=3.584s target=3.000s
+>> browser E2E stack=real page=https://127.0.0.1:56941/?debug=1 stream=https://127.0.0.1:56941/live/party/index.m3u8
+PASS multivariant playlist carries the declared attachment pin
+PASS media playlist is low latency at the declared hold-back floor: 0.900s
+PASS browser guest actions: QR=400x400 composer=visible previews=2 keepsake=absent
+PASS browser sync-first: platform=hls join=214ms manifest=https://127.0.0.1:56941/live/party/index.m3u8 readyState=4 bufferedEnd=8.70s delta=4.19s rms=0.06181 max=0.11157
+PASS browser sync-delayed: platform=hls join=30ms manifest=https://127.0.0.1:56941/live/party/index.m3u8 readyState=4 bufferedEnd=18.94s delta=4.02s rms=0.06330 max=0.11021
+PASS browser continuity healthy peer while another device joins: progress=7.950s, no waits, no seeks
+PASS browser room-sync delayed-join: peers=3.016s/3.007s; spread median=0.009s p90=0.010s; deadline error median=0.015s p90=0.018s (12 samples, local PDT)
+PASS browser audible transaction healthy peer: re-entry refused at generation=1
+PASS browser audible transaction delayed peer: re-entry refused at generation=1
+>> injected late-phone drift: -0.650s
+PASS browser continuity healthy peer after another device drifts: progress=8.005s, no waits, no seeks
+PASS browser continuity drifted device remains playing: progress=8.601s, no waits, no seeks
+PASS browser room-sync after-650ms-drift: peers=3.017s/3.061s; spread median=0.044s p90=0.044s; deadline error median=0.059s p90=0.062s (12 samples, local PDT)
+PASS browser sync-peer-without-program-clock: platform=hls join=48ms manifest=https://127.0.0.1:56941/live/party/index.m3u8 readyState=4 bufferedEnd=24.92s delta=4.01s rms=0.06374 max=0.11432
+PASS browser continuity healthy peer while an unsynchronized device joins: progress=8.168s, no waits, no seeks
+RESULT: PASS - browser guest fetched, buffered, played, and measured non-zero audio RMS.

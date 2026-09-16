@@ -1,0 +1,76 @@
+{
+  "protocol": "HTTPS loopback (ephemeral trust in test process)",
+  "metadataProxy": false,
+  "comparing": true,
+  "seconds": 600,
+  "results": {
+    "baseline-0": {
+      "total": 2299,
+      "measured": 2299,
+      "precise": 2299,
+      "backward": 0,
+      "maxStallSeconds": 0,
+      "median": 1.1607531615705229,
+      "p95Error": 1.8398121324814711,
+      "rateMin": 1,
+      "rateMax": 1,
+      "platform": [
+        "native"
+      ]
+    },
+    "baseline-1": {
+      "total": 2299,
+      "measured": 2299,
+      "precise": 2299,
+      "backward": 0,
+      "maxStallSeconds": 0,
+      "median": 1.3950422372686444,
+      "p95Error": 1.6055884358928014,
+      "rateMin": 1,
+      "rateMax": 1,
+      "platform": [
+        "native"
+      ]
+    },
+    "candidate-0": {
+      "total": 2299,
+      "measured": 2299,
+      "precise": 2299,
+      "backward": 0,
+      "maxStallSeconds": 0,
+      "median": 2.9958647995994543,
+      "p95Error": 0.004945137627422991,
+      "rateMin": 1,
+      "rateMax": 1,
+      "platform": [
+        "native"
+      ]
+    },
+    "candidate-1": {
+      "total": 2299,
+      "measured": 2299,
+      "precise": 2299,
+      "backward": 0,
+      "maxStallSeconds": 0,
+      "median": 2.9268471096180146,
+      "p95Error": 0.07395451243349838,
+      "rateMin": 1,
+      "rateMax": 1,
+      "platform": [
+        "native"
+      ]
+    },
+    "baseline-spread": {
+      "samples": 2299,
+      "median": 0.23425013563659736,
+      "p95": 0.23522296393843134,
+      "max": 0.23612398956553093
+    },
+    "candidate-spread": {
+      "samples": 2299,
+      "median": 0.06909545212356916,
+      "p95": 0.0699940525210696,
+      "max": 0.07078028116162738
+    }
+  }
+}

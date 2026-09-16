@@ -1,0 +1,50 @@
+{
+  "protocol": "HTTPS loopback (ephemeral trust in test process)",
+  "metadataProxy": false,
+  "clockOnly": false,
+  "drift": true,
+  "seconds": 90,
+  "results": {
+    "current-0": {
+      "total": 275,
+      "measured": 275,
+      "precise": 275,
+      "backward": 0,
+      "maxStallSeconds": 0,
+      "audibleSeeks": 0,
+      "median": 2.9808290496090484,
+      "p95Error": 0.019628537165888638,
+      "rateMin": 1,
+      "rateMax": 1,
+      "platform": [
+        "native"
+      ]
+    },
+    "current-1": {
+      "total": 196,
+      "measured": 196,
+      "precise": 196,
+      "backward": 0,
+      "maxStallSeconds": 0,
+      "audibleSeeks": 0,
+      "median": 3.0040600487129994,
+      "p95Error": 0.004563192717665476,
+      "rateMin": 1,
+      "rateMax": 1,
+      "platform": [
+        "native"
+      ]
+    },
+    "current-spread": {
+      "samples": 198,
+      "median": 0.02297334090772374,
+      "p95": 0.02399972486787716,
+      "max": 0.02422706806994368
+    },
+    "fault": {
+      "injectedAt": 30.24,
+      "peakLatency": 4.285451091073126,
+      "recoveredAt": 41.58
+    }
+  }
+}

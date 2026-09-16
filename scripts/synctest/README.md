@@ -45,5 +45,6 @@ Output is a per-click spread plus a verdict:
 
 The `stream-e2e.mjs` harness can measure media-clock spread on the hls.js
 (Chromium) path only - it has no native-HLS engine, so it cannot validate the
-iOS/Safari path at all. This mic test is how the **native** path (the one that
-regressed in the field) gets validated. See `docs/sync-redesign.md`.
+iOS/Safari path at all. `scripts/native-sync-lab.mjs` adds macOS native media-clock
+coverage; this mic test validates **physical output**. See
+[synchronization](../../docs/synchronization.md) for the current limitations.

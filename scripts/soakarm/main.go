@@ -36,6 +36,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"partyparty/internal/schedule"
 )
 
 // maxPlaylistBytes mirrors the bound the production proxy puts on a rewrite, so
@@ -49,6 +51,9 @@ func main() {
 	upstream := flag.String("upstream", "", "upstream base URL, e.g. http://127.0.0.1:8000")
 	pin := flag.String("pin", "keep", "keep: pass playlists through untouched; strip: remove EXT-X-START")
 	holdBack := flag.Float64("holdback", 0, "if >0, declare HOLD-BACK=<n> in EXT-X-SERVER-CONTROL (0 leaves the playlist alone)")
+	clockMetadata := flag.Bool("clock-metadata", false, "add precise source clock date-range cues (lab only)")
+	cert := flag.String("cert", "", "optional test TLS certificate")
+	key := flag.String("key", "", "optional test TLS key file")
 	flag.Parse()
 
 	if *upstream == "" {
@@ -86,7 +91,7 @@ func main() {
 		// blocking playlist reload stops being low latency.
 		FlushInterval: -1,
 		ModifyResponse: func(resp *http.Response) error {
-			if (!strip && !setHoldBack) || resp.Request == nil || resp.StatusCode != http.StatusOK {
+			if (!strip && !setHoldBack && !*clockMetadata) || resp.Request == nil || resp.StatusCode != http.StatusOK {
 				return nil
 			}
 			if !strings.HasSuffix(resp.Request.URL.Path, ".m3u8") {
@@ -106,6 +111,9 @@ func main() {
 			if setHoldBack {
 				body = setSegmentHoldBack(body, *holdBack)
 			}
+			if *clockMetadata {
+				body = schedule.ClockRanges(body)
+			}
 			resp.Body = io.NopCloser(bytes.NewReader(body))
 			resp.ContentLength = int64(len(body))
 			resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
@@ -117,8 +125,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("soakarm: listen: %v", err)
 	}
-	log.Printf("soakarm: pin=%s holdback=%.3f upstream=%s listening on http://%s", *pin, *holdBack, target, ln.Addr())
+	scheme := "http"
+	if *cert != "" {
+		scheme = "https"
+	}
+	log.Printf("soakarm: pin=%s holdback=%.3f upstream=%s listening on %s://%s", *pin, *holdBack, target, scheme, ln.Addr())
 	srv := &http.Server{Handler: proxy}
+	if *cert != "" {
+		log.Fatal(srv.ServeTLS(ln, *cert, *key))
+	}
 	if err := srv.Serve(ln); err != nil {
 		log.Fatalf("soakarm: serve: %v", err)
 	}

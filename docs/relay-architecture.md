@@ -77,27 +77,30 @@ Every viable mode publishes the same fixed geometry:
 - `EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES` in the multivariant playlist;
 - `schedule.Delay == 3s` as the declared value.
 
-Two corrections measured on 2026-09-11, kept here so this section is not read as
-a description of what reaches a listener. See
-`docs/receipts/soak-lab-20260911/` and the handoff.
+These are declared hints, not a proven native playback schedule. See
+[synchronization](synchronization.md) for the current implementation and native
+HTTPS measurements, and `docs/receipts/soak-lab-20260911/` for the older HTTP lab.
 
 **Relayed guests never receive the attachment pin.** `schedule.RewritePlaylist`
 inserts `EXT-X-START` only into a body containing `#EXT-X-STREAM-INF`, and
 contribution publishes the MEDIA playlist alone, under the fixed name
 `stream.m3u8`. There is no multivariant on the origin, so there is nowhere for
-the pin to go. A relayed guest gets `PART-HOLD-BACK=0.90000` and nothing else.
+the pin to go. A relayed guest gets the same part hold-back floor and source
+clock date ranges as direct guests.
 
 **The pin does not move AVPlayer anyway.** Stripping it changed attachment by
-0.00s against a transparent control. The three seconds a direct listener sits
-back is the HLS default of three target durations, and gohlslib rounds
+0.00s against a transparent control in the September 11 HTTP-only lab. That
+lab's three-second delay matches the HLS default of three target durations;
+gohlslib rounds
 `TARGETDURATION` to an integer second, so 500 ms segments make that default
-3.0 s. The room gets its cushion by coincidence of that rounding rather than by
-asking for it. `HOLD-BACK`, which the media playlist does not declare, is the
-tag that actually moves the attachment point, and only upward.
+3.0 s. This does not establish the HTTPS low-latency attachment point.
+`HOLD-BACK`, which the media playlist does not declare, moved the attachment
+point upward in that lab.
 
 The relay does not add a second target and no listener can change the room-wide
 value. Native HLS/AVPlayer is the production iPhone engine. Healthy playback is
-passive: the page does not continuously seek or rate-steer it. A visible phone
+passive: a fresh attachment is aligned while muted, then the page stops
+positioning it. It does not continuously seek or rate-steer. A visible phone
 that remains at least 750 ms beyond the target for three measurements receives
 a fresh native HLS attachment. That correction remains available throughout a
 set and never runs while Safari is hidden or the phone is locked.
@@ -105,7 +108,9 @@ set and never runs while Safari is hidden or the phone is locked.
 The Mac's playlists carry `PROGRAM-DATE-TIME`. Contribution uploads playlists
 and media without repackaging or re-encoding them, so direct and relayed guests
 see the same capture timeline. The origin stores and serves those bytes
-unchanged.
+unchanged. The contributor also calibrates source time at the origin; the live
+guest `/api/time` response uses that estimate rather than a frozen snapshot or
+the origin's unrelated wall clock.
 
 Any change to this geometry or attachment position requires the real-AVPlayer
 pre-upload soak and supervised physical test in `AGENTS.md`. Browser engines,

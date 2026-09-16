@@ -1,5 +1,13 @@
 # partyparty handoff
 
+2026-09-16: Synchronization work is in [synchronization.md](synchronization.md).
+Source/relay clock calibration, precise native timeline cues, and bounded muted
+startup alignment against the three-second room target are implemented. Healthy
+native playback remains passive; existing late-device recovery realigns a fresh
+attachment. No release/upload was performed. Supervised physical playback and
+autoplay/lock-screen validation remain open. Test receipts are linked from the
+synchronization report.
+
 2026-09-13: Instruction-only cleanup; application behavior unchanged. Earlier notes are preserved verbatim in [HANDOFF-history-2026-09-13.md](HANDOFF-history-2026-09-13.md). Read the relevant section when resuming its topic; historical release/status claims need revalidation.
 
 ## Recent recorded checkpoints

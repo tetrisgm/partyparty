@@ -1,0 +1,7 @@
+{
+  "web/listener.html": "f878e303794a8101962cbea1104ac13740f541589a2d0a9279a611ac5b215036",
+  "internal/schedule/clock.go": "4dc4a2f0d2936c201c9a6d26a5f74f52850d3a8fb2a65790c66388c3f2bd626d",
+  "internal/schedule/schedule.go": "bc4222cd1afc50a40584b92e94a74f99a9492bcf82c3b8195a3ecd5d4464440d",
+  "internal/contribute/clock.go": "6431548ed66f1febd0c19efd172bd0bc3c2bc289eb74961f09da1ee1363f6418",
+  "internal/roomplane/clock.go": "8540d878b1972135577a5b3db16af2c53f4ff2f252f0b9d63e5962706f93d326"
+}

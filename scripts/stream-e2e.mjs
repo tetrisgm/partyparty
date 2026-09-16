@@ -700,11 +700,12 @@ async function injectDrift(page, seconds) {
 }
 
 async function assertRoomSync(first, second, label = 'steady', { allowInjectedDrift = false } = {}) {
+  const tolerance = 0.1;
   try {
     await waitFor(async () => {
       const states = await Promise.all([syncState(first), syncState(second)]);
       return states.every((s) => !s.paused && !s.muted && s.readyState >= 3 && Number.isFinite(s.latency) && s.ref === 'pdt')
-        && Math.abs(states[0].latency - states[1].latency) <= 1.0 && states;
+        && Math.abs(states[0].latency - states[1].latency) <= tolerance && states;
     }, { timeoutMs: 20000, label: `both guests within the room tolerance (${label})` });
   } catch (err) {
     const states = await Promise.all([syncState(first), syncState(second)]);
@@ -763,18 +764,17 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedDr
   if (!allowInjectedDrift && samples.some((s) => s.audibleA > 0 || s.audibleB > 0)) {
     fail(`clean-room playback required an audible correction: ${JSON.stringify(samples)}`);
   }
-  // The product boundary is sub-second device-to-device timing. A tighter
-  // controller caused audible seek loops on real iPhones, so this test protects
-  // the accepted range while continuity tests below protect uninterrupted play.
-  if (median >= 1.0 || p90 >= 1.0) {
+  // Require 100 ms of media-clock agreement. This is a Chromium test; the
+  // native guest-page lab separately exercises Safari's presentation behavior.
+  if (median >= tolerance || p90 >= tolerance) {
     fail(`two-client sync spread too wide: median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s samples=${JSON.stringify(samples)}`);
   }
-  // The product contract remains sub-second to the common deadline, while the
+  // Check the same tolerance against the common deadline, while the
   // separate spread check catches peer disagreement.
   // The direct synthetic publisher has no production capture/PDT origin, so the
   // mock validates peer spread and recovery only. The real Go-server stack owns
   // the absolute room-deadline assertion.
-  if (!FORCE_MOCK && (targetMedian >= 1.0 || targetP90 >= 1.0)) {
+  if (!FORCE_MOCK && (targetMedian >= tolerance || targetP90 >= tolerance)) {
     fail(`listeners missed the authoritative deadline: median error=${targetMedian.toFixed(3)}s p90=${targetP90.toFixed(3)}s samples=${JSON.stringify(samples)}`);
   }
   log(`PASS browser room-sync ${label}: peers=${aMedian.toFixed(3)}s/${bMedian.toFixed(3)}s; spread median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s; deadline error median=${targetMedian.toFixed(3)}s p90=${targetP90.toFixed(3)}s (${samples.length} samples, local PDT)`);

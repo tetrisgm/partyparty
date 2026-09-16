@@ -1,0 +1,12 @@
+{
+  "current-0": {
+    "samples": 2298,
+    "preciseSamples": 2298,
+    "maxStallSeconds": 0
+  },
+  "current-1": {
+    "samples": 2299,
+    "preciseSamples": 2299,
+    "maxStallSeconds": 0
+  }
+}

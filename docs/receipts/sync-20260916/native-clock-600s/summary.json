@@ -1,0 +1,40 @@
+{
+  "protocol": "HTTPS loopback (ephemeral trust in test process)",
+  "metadata": false,
+  "comparing": false,
+  "seconds": 600,
+  "results": {
+    "current-0": {
+      "total": 2298,
+      "measured": 2298,
+      "precise": 2298,
+      "backward": 0,
+      "median": 1.1654888646035833,
+      "p95Error": 1.8354032209076685,
+      "rateMin": 1,
+      "rateMax": 1,
+      "platform": [
+        "native"
+      ]
+    },
+    "current-1": {
+      "total": 2299,
+      "measured": 2299,
+      "precise": 2299,
+      "backward": 0,
+      "median": 1.3261970229816216,
+      "p95Error": 1.6745051973590235,
+      "rateMin": 1,
+      "rateMax": 1,
+      "platform": [
+        "native"
+      ]
+    },
+    "current-spread": {
+      "samples": 2298,
+      "median": 0.16077174860448573,
+      "p95": 0.16189761872089004,
+      "max": 0.162752790011349
+    }
+  }
+}
