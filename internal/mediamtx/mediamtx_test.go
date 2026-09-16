@@ -111,6 +111,22 @@ func TestStartIdempotent(t *testing.T) {
 	}
 }
 
+func TestReapOrphansSkipsProcessScanForUnusedPort(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "lsof-called")
+	stub := "#!/bin/sh\ntouch '" + marker + "'\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "lsof"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if n := ReapOrphans(freePort(t)); n != 0 {
+		t.Fatalf("reaped %d processes on an unused port", n)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("unused port unnecessarily invoked the process scanner")
+	}
+}
+
 func TestStopReturnsImmediately(t *testing.T) {
 	// Stubborn stub: SIGINT is ignored, so a synchronous stop would eat the
 	// full kill-escalation delay. Stop() must not.

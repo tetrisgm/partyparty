@@ -358,10 +358,14 @@ export async function startRealStack(rootWork, ffmpeg, mediamtx, opts = {}) {
   });
 
   const statusURL = `http://127.0.0.1:${httpPort}/api/status`;
-  await waitFor(() => fetchJSON(statusURL), {
-    timeoutMs: 20000,
-    label: 'real server /api/status',
-  });
+  try {
+    await waitFor(() => fetchJSON(statusURL), {
+      timeoutMs: 20000,
+      label: 'real server /api/status',
+    });
+  } catch (err) {
+    throw new Error(`${err.message}; exit=${server.child.exitCode} signal=${server.child.signalCode}\n${server.lines.slice(-20).join('\n')}`, { cause: err });
+  }
 
   await fetchJSON(`http://127.0.0.1:${httpPort}/api/start?device=test`, {
     method: 'POST',

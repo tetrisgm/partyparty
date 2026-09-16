@@ -205,7 +205,17 @@ func (s *Server) EnsureReady(rtspPort, hlsPort int, timeout time.Duration) error
 func ReapOrphans(ports ...int) int {
 	killed := map[string]bool{}
 	for _, port := range ports {
-		out, err := exec.Command("lsof", "-ti", fmt.Sprintf("tcp:%d", port), "-sTCP:LISTEN").Output()
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 100*time.Millisecond)
+		if err != nil {
+			continue // free port: no orphan to inspect
+		}
+		_ = conn.Close()
+		// lsof otherwise resolves unrelated socket names and can block startup
+		// indefinitely on a venue's DNS. Orphan cleanup is best effort; actual
+		// binding/readiness below still detects an occupied port.
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		out, err := exec.CommandContext(ctx, "lsof", "-nP", "-ti", fmt.Sprintf("tcp:%d", port), "-sTCP:LISTEN").Output()
+		cancel()
 		if err != nil {
 			continue // nobody listening
 		}
