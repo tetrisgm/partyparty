@@ -1,0 +1,46 @@
+go test ./... (exit 0)
+ok  	partyparty	(cached)
+?   	partyparty/cmd/pporigin	[no test files]
+ok  	partyparty/internal/activate	(cached)
+ok  	partyparty/internal/broadcast	(cached)
+?   	partyparty/internal/config	[no test files]
+ok  	partyparty/internal/contribute	(cached)
+?   	partyparty/internal/devices	[no test files]
+ok  	partyparty/internal/diag	(cached)
+ok  	partyparty/internal/event	(cached)
+ok  	partyparty/internal/mediamtx	(cached)
+?   	partyparty/internal/netinfo	[no test files]
+ok  	partyparty/internal/origin	7.359s
+ok  	partyparty/internal/peers	(cached)
+ok  	partyparty/internal/relay	(cached)
+ok  	partyparty/internal/roomplane	(cached)
+ok  	partyparty/internal/schedule	(cached)
+ok  	partyparty/internal/server	0.801s
+ok  	partyparty/internal/stats	(cached)
+?   	partyparty/scripts/soakarm	[no test files]
+
+npm test (exit 0)
+
+> pretest
+> npm ci
+
+
+added 3 packages, and audited 4 packages in 1s
+
+found 0 vulnerabilities
+
+> test
+> node scripts/test-stream-contract.mjs && node scripts/test-room-clock.mjs && node scripts/test-native-join.mjs && node scripts/test-session-log-analyzer.mjs && node scripts/test-listener-render-stability.mjs && node scripts/test-wall-render-stability.mjs && node scripts/test-dj-console-saves.mjs && node scripts/test-guest-page-taps.mjs && node scripts/test-menu-bar-contract.mjs
+
+PASS fixed streaming contract
+PASS room clock: monotonic anchor, expiry, uncertainty, malformed replies, reset race, native cue precision
+PASS native startup/recovery: asynchronous seeks, repeated faults, two-second repair bound, precise detection, cancellation, visibility, no replay, passive continuation
+PASS session log analyzer
+PASS listener render stability
+PASS wall render stability
+PASS dj console saves
+PASS guest page taps
+PASS menu-bar live-control contract
+
+node scripts/test-session-log-analyzer.mjs (after receipt coverage update, exit 0)
+PASS session log analyzer

@@ -1,12 +1,13 @@
 # partyparty handoff
 
 2026-09-16: Synchronization work is in [synchronization.md](synchronization.md).
-Source/relay clock calibration, precise native timeline cues, and bounded muted
-startup alignment against the three-second room target are implemented. Healthy
-native playback remains passive; existing late-device recovery realigns a fresh
-attachment. No release/upload was performed. Supervised physical playback and
-autoplay/lock-screen validation remain open. Test receipts are linked from the
-synchronization report.
+Source/relay clock calibration and shared startup/recovery now target two seconds
+on native HLS and hls.js. Recovery uses the existing attachment with a two-second
+limit; the old 11-second recovery and inconsistent 1.5-second candidate were
+rejected. Publisher timestamps are preserved, hls.js is pinned to 1.7.3, and
+[receipts](receipts/sync-recovery-20260916/README.md) retain rejected candidates
+and mixed-engine checks. No release/upload was performed. Supervised physical
+phone, speaker, autoplay, and lock-screen validation remain open.
 
 2026-09-13: Instruction-only cleanup; application behavior unchanged. Earlier notes are preserved verbatim in [HANDOFF-history-2026-09-13.md](HANDOFF-history-2026-09-13.md). Read the relevant section when resuming its topic; historical release/status claims need revalidation.
 

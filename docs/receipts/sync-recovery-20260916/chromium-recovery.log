@@ -1,0 +1,27 @@
+>> browser=chromium scenario=sync
+>> ffmpeg=/Users/shokunin/dev/partyparty/assets/ffmpeg
+>> mediamtx=/Users/shokunin/dev/partyparty/assets/mediamtx
+>> keeping work dir: /var/folders/tq/_6yt1vp555qcj2jwgxmz060w0000gn/T/pp-stream-e2e-hdOPQm
+>> building dev partyparty-server
+PASS server stream readiness: generation=1789543942855 real=2.389s gaps=3.584s target=2.000s
+>> browser E2E stack=real page=https://127.0.0.1:53142/?debug=1 stream=https://127.0.0.1:53142/live/party/index.m3u8
+PASS multivariant playlist carries the declared attachment pin
+PASS media playlist is low latency at the declared hold-back floor: 0.600s
+PASS browser guest actions: QR=400x400 composer=visible previews=2 keepsake=absent
+PASS browser sync-first: platform=hls join=1645ms manifest=https://127.0.0.1:53142/live/party/index.m3u8 readyState=4 bufferedEnd=8.70s delta=4.01s rms=0.06733 max=0.12292
+PASS browser sync-delayed: platform=hls join=1572ms manifest=https://127.0.0.1:53142/live/party/index.m3u8 readyState=4 bufferedEnd=19.97s delta=4.01s rms=0.06414 max=0.09002
+PASS browser continuity healthy peer while another device joins: progress=9.466s, no waits, no seeks
+PASS browser room-sync delayed-join: peers=1.960s/1.956s; spread median=0.003s p90=0.005s; deadline error median=0.041s p90=0.045s (12 samples, local PDT)
+PASS browser audible transaction healthy peer: re-entry refused at generation=1
+PASS browser audible transaction delayed peer: re-entry refused at generation=1
+>> injected late-phone drift: -0.650s
+PASS browser recovery 650ms drift: 1247ms, same attachment, no audible repair seeks
+PASS browser continuity healthy peer after another device drifts: progress=6.293s, no waits, no seeks
+PASS browser continuity repaired device remains playing: progress=4.002s, no waits, no seeks
+PASS browser room-sync after-650ms-drift: peers=1.960s/1.960s; spread median=0.001s p90=0.002s; deadline error median=0.040s p90=0.042s (12 samples, local PDT)
+PASS browser recovery 2.5s media delivery hold: 1367ms, same attachment, no audible repair seeks
+PASS browser continuity healthy peer during media delivery outage: progress=4.913s, no waits, no seeks
+PASS network fault: 2 held requests, 2 observed stalls
+PASS browser sync-peer-without-program-clock: platform=hls join=1631ms manifest=https://127.0.0.1:53142/live/party/index.m3u8 readyState=4 bufferedEnd=26.11s delta=4.01s rms=0.06440 max=0.09218
+PASS browser continuity healthy peer while an unsynchronized device joins: progress=9.531s, no waits, no seeks
+RESULT: PASS - browser guest fetched, buffered, played, and measured non-zero audio RMS.

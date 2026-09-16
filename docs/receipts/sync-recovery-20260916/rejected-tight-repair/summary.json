@@ -1,0 +1,64 @@
+{
+  "protocol": "HTTPS loopback (ephemeral trust in test process)",
+  "metadataProxy": false,
+  "clockOnly": false,
+  "drift": true,
+  "seconds": 90,
+  "results": {
+    "current-0": {
+      "total": 271,
+      "measured": 271,
+      "precise": 271,
+      "backward": 0,
+      "unexpectedMuted": 0,
+      "generations": [
+        1
+      ],
+      "maxStallSeconds": 0,
+      "audibleSeeks": 0,
+      "median": 1.9950446154183736,
+      "target": 2,
+      "p95Error": 0.005324511496175521,
+      "rateMin": 1,
+      "rateMax": 1,
+      "platform": [
+        "native"
+      ]
+    },
+    "current-1": {
+      "total": 258,
+      "measured": 40,
+      "precise": 40,
+      "backward": 0,
+      "unexpectedMuted": 218,
+      "generations": [
+        1
+      ],
+      "maxStallSeconds": 1.5139999999999958,
+      "audibleSeeks": 0,
+      "median": 2.017037729891235,
+      "target": 2,
+      "p95Error": 0.017670985903940117,
+      "rateMin": 1,
+      "rateMax": 1,
+      "platform": [
+        "native"
+      ]
+    },
+    "current-spread": {
+      "samples": 41,
+      "median": 0.02198553065783937,
+      "p95": 0.02260945608894316,
+      "max": 0.022858462415533687
+    },
+    "faults": [
+      {
+        "injectedAt": 30.235,
+        "endedAt": 31.447,
+        "peakLatency": 3.4067436888600278,
+        "recoverySeconds": null,
+        "mutedSeconds": 9.581999999999994
+      }
+    ]
+  }
+}

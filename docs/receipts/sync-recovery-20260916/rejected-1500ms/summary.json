@@ -1,0 +1,40 @@
+{
+  "protocol": "HTTPS loopback (ephemeral trust in test process)",
+  "metadataProxy": false,
+  "clockOnly": false,
+  "drift": true,
+  "seconds": 90,
+  "results": {
+    "current-0": {
+      "total": 271,
+      "measured": 0,
+      "precise": 0,
+      "backward": 0,
+      "maxStallSeconds": 0,
+      "audibleSeeks": 0,
+      "rateMin": null,
+      "rateMax": null,
+      "platform": [
+        "native"
+      ]
+    },
+    "current-1": {
+      "total": 272,
+      "measured": 0,
+      "precise": 0,
+      "backward": 0,
+      "maxStallSeconds": 0,
+      "audibleSeeks": 0,
+      "rateMin": null,
+      "rateMax": null,
+      "platform": [
+        "native"
+      ]
+    },
+    "current-spread": {
+      "samples": 0,
+      "max": null
+    },
+    "faults": []
+  }
+}

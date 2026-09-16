@@ -12,7 +12,7 @@ speaker, Bluetooth, or lock-screen validation.
 | [Uncompensated positioning](candidate-passive/summary.json) | 90 s | 1.185 / 3.453 s | 2269 ms | Rejected |
 | [Predictive prototype](candidate-predictive-600s/summary.json) | 600 s | 2.996 / 2.927 s | 70 ms | Passed |
 | [Integrated native startup](native-integrated-600s/summary.json) | 600 s | 3.024 / 3.004 s | 21 ms | Passed |
-| [One interrupted native listener](native-fault-90s/summary.json) | 90 s | 2.981 / 3.004 s | 24 ms | Passed after recovery |
+| [One interrupted native listener](native-fault-90s/summary.json) | 90 s | 2.981 / 3.004 s | 24 ms | Rejected: recovery gate was too permissive |
 
 The integrated ten-minute run had 100% precise timing coverage after startup,
 normal playback rate throughout, no observed stalls, and no backward movement.
@@ -21,6 +21,10 @@ The fault run introduced a 1.2 s media-clock freeze at 30.24 s. Delay peaked at
 continuous; neither listener performed an audible seek. The deliberately
 disturbed listener's 30–50 s interval is excluded from steady-state statistics,
 with fault detection and recovery checked separately.
+The owner rejected this recovery time. The previous pass label did not establish
+acceptable recovery: it allowed a 20-second exclusion. The current test permits
+only the actual interruption plus two seconds, and preserves this trace as a
+regression reference.
 
 `native.jsonl.gz` contains complete raw telemetry, including startup and the
 fault interval. `listener.html.gz` is the exact guest page recovered from each

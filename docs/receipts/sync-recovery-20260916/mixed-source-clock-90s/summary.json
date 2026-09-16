@@ -1,0 +1,112 @@
+{
+  "protocol": "HTTPS loopback (ephemeral trust in test process)",
+  "metadataProxy": false,
+  "clockOnly": false,
+  "drift": true,
+  "mixed": true,
+  "seconds": 90,
+  "results": {
+    "programTimeline": {
+      "observations": 19,
+      "maxErrorMs": 0
+    },
+    "current-0": {
+      "total": 275,
+      "measured": 275,
+      "precise": 275,
+      "backward": 0,
+      "unexpectedMuted": 0,
+      "generations": [
+        1
+      ],
+      "maxStallSeconds": 0,
+      "audibleSeeks": 0,
+      "median": 2.0209814461068745,
+      "target": 2,
+      "p95Error": 0.021803245882023425,
+      "rateMin": 1,
+      "rateMax": 1,
+      "platform": [
+        "native"
+      ]
+    },
+    "current-1": {
+      "total": 236,
+      "measured": 236,
+      "precise": 236,
+      "backward": 0,
+      "unexpectedMuted": 0,
+      "generations": [
+        1
+      ],
+      "maxStallSeconds": 0,
+      "audibleSeeks": 0,
+      "median": 1.9680287969687924,
+      "target": 2,
+      "p95Error": 0.057579877228577825,
+      "rateMin": 1,
+      "rateMax": 1,
+      "platform": [
+        "native"
+      ]
+    },
+    "chromium": {
+      "total": 284,
+      "measured": 284,
+      "precise": 284,
+      "backward": 0,
+      "unexpectedMuted": 0,
+      "generations": [
+        1
+      ],
+      "maxStallSeconds": 0,
+      "audibleSeeks": 0,
+      "median": 1.9982998046875,
+      "target": 2,
+      "p95Error": 0.004900146484374979,
+      "rateMin": 1,
+      "rateMax": 1,
+      "platform": [
+        "hls"
+      ]
+    },
+    "current-spread": {
+      "samples": 242,
+      "median": 0.053224446398569825,
+      "p95": 0.05734388138360358,
+      "max": 0.057624374429702474
+    },
+    "mixed-spread": {
+      "samples": 275,
+      "median": 0.022875051254937606,
+      "p95": 0.026001781412676728,
+      "max": 0.027384798616723938
+    },
+    "faults": [
+      {
+        "injectedAt": 30.234,
+        "endedAt": 31.441,
+        "peakLatency": 3.310109798027086,
+        "recoveredAt": 33.007,
+        "recoverySeconds": 1.565999999999999,
+        "mutedSeconds": 1.004999999999999
+      },
+      {
+        "injectedAt": 50.142,
+        "endedAt": 51.346,
+        "peakLatency": 3.2499351371944356,
+        "recoveredAt": 52.914,
+        "recoverySeconds": 1.568000000000005,
+        "mutedSeconds": 1.0060000000000002
+      },
+      {
+        "injectedAt": 70.05,
+        "endedAt": 71.256,
+        "peakLatency": 3.250650108660033,
+        "recoveredAt": 72.822,
+        "recoverySeconds": 1.5660000000000025,
+        "mutedSeconds": 1.0060000000000002
+      }
+    ]
+  }
+}
