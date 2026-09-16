@@ -1,0 +1,5 @@
+
+> party-party-site@0.0.0 smoke
+> node test/smoke.mjs
+
+PASS 27 worker smoke tests

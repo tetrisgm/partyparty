@@ -1,0 +1,47 @@
+{
+  "appId": "6794880742",
+  "version": {
+    "id": "48b26f37-c69e-4245-8d0e-3ab787eb8610",
+    "version": "125.51",
+    "platform": "MAC_OS",
+    "state": "PREPARE_FOR_SUBMISSION",
+    "createdDate": "2026-07-26T08:45:56-07:00"
+  },
+  "reviewDetailConfigured": true,
+  "reviewDetailId": "2de376e4-21e9-4705-9621-39cd1c089aa7",
+  "latestSubmission": {
+    "id": "6535bfad-72e3-48e9-a75f-1e718ebc52c8",
+    "state": "COMPLETE",
+    "platform": "MAC_OS",
+    "submittedDate": "2026-07-30T03:15:01.58Z"
+  },
+  "reviewState": "COMPLETE",
+  "summary": {
+    "errors": 1,
+    "warnings": 1,
+    "infos": 2,
+    "blocking": 1
+  },
+  "nextAction": "Select a build for this version in App Store Connect",
+  "blockingChecks": [
+    {
+      "id": "build.required.missing",
+      "severity": "error",
+      "message": "no build attached to app store version",
+      "remediation": "Select a build for this version in App Store Connect",
+      "resourceType": "build"
+    }
+  ],
+  "warningChecks": [
+    {
+      "id": "metadata.required.whats_new",
+      "severity": "warning",
+      "message": "what's new is empty",
+      "remediation": "Provide release notes for this localization",
+      "locale": "en-US",
+      "field": "whatsNew",
+      "resourceType": "appStoreVersionLocalization",
+      "resourceId": "bc86803e-9c81-494c-a1ec-590ea54ce704"
+    }
+  ]
+}

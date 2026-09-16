@@ -148,6 +148,7 @@ transitions, real autoplay gestures, and measured acoustic spread.
 Bluetooth/DAC output delay is separate from the media timeline and must be
 measured or compensated before claiming synchronized sound.
 
-No upload, deployment, or reinstall is part of this source change. The native
-test exercises macOS WebKit/AVPlayer, not physical iPhones, Bluetooth devices,
-or Safari's actual user-gesture policy.
+The source change was subsequently released for TestFlight testing; see the
+[release receipt](receipts/release-273-20260916/README.md). The native test
+exercises macOS WebKit/AVPlayer, not physical iPhones, Bluetooth devices, or
+Safari's actual user-gesture policy.

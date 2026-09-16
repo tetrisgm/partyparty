@@ -1,0 +1,7 @@
+prerelease macOS 27.0 (26A5425a) allowed: TestFlight-only build
+** ARCHIVE SUCCEEDED **
+App Store bundle verified: 125.51 build 273 (fm.partyparty.app)
+** EXPORT SUCCEEDED **
+App Store bundle verified: 125.51 build 273 (fm.partyparty.app)
+App Store package verified: /Users/shokunin/dev/partyparty/dist/PartyParty-app-store.pkg
+built dist/PartyParty-app-store.pkg

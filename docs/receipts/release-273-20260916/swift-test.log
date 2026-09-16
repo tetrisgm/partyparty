@@ -1,0 +1,38 @@
+[0/1] Planning build
+Building for debugging...
+[0/4] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.16s)
+Test Suite 'All tests' started at 2026-09-16 10:27:37.668.
+Test Suite 'PartyPartyPackageTests.xctest' started at 2026-09-16 10:27:37.672.
+Test Suite 'CoalescingRefreshStateTests' started at 2026-09-16 10:27:37.672.
+Test Case '-[PartyPartyTests.CoalescingRefreshStateTests testFirstRequestStartsAndCompletionReturnsToIdle]' started.
+Test Case '-[PartyPartyTests.CoalescingRefreshStateTests testFirstRequestStartsAndCompletionReturnsToIdle]' passed (0.001 seconds).
+Test Case '-[PartyPartyTests.CoalescingRefreshStateTests testOverlappingRequestsCollapseIntoOneFollowUp]' started.
+Test Case '-[PartyPartyTests.CoalescingRefreshStateTests testOverlappingRequestsCollapseIntoOneFollowUp]' passed (0.000 seconds).
+Test Case '-[PartyPartyTests.CoalescingRefreshStateTests testRequestDuringFollowUpQueuesOneMoreRefresh]' started.
+Test Case '-[PartyPartyTests.CoalescingRefreshStateTests testRequestDuringFollowUpQueuesOneMoreRefresh]' passed (0.000 seconds).
+Test Suite 'CoalescingRefreshStateTests' passed at 2026-09-16 10:27:37.674.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'ConsoleSecurityPolicyTests' started at 2026-09-16 10:27:37.674.
+Test Case '-[PartyPartyTests.ConsoleSecurityPolicyTests testBridgeRequiresExactOriginAndMainFrame]' started.
+Test Case '-[PartyPartyTests.ConsoleSecurityPolicyTests testBridgeRequiresExactOriginAndMainFrame]' passed (0.000 seconds).
+Test Case '-[PartyPartyTests.ConsoleSecurityPolicyTests testNewWindowsOpenOnlyExactOriginOrAllowlistedBrowserDestination]' started.
+Test Case '-[PartyPartyTests.ConsoleSecurityPolicyTests testNewWindowsOpenOnlyExactOriginOrAllowlistedBrowserDestination]' passed (0.000 seconds).
+Test Case '-[PartyPartyTests.ConsoleSecurityPolicyTests testOnlyKnownPublicLinksOpenInSystemBrowser]' started.
+Test Case '-[PartyPartyTests.ConsoleSecurityPolicyTests testOnlyKnownPublicLinksOpenInSystemBrowser]' passed (0.000 seconds).
+Test Case '-[PartyPartyTests.ConsoleSecurityPolicyTests testRemoteMainFrameRedirectDoesNotOpenAllowlistedDestination]' started.
+Test Case '-[PartyPartyTests.ConsoleSecurityPolicyTests testRemoteMainFrameRedirectDoesNotOpenAllowlistedDestination]' passed (0.000 seconds).
+Test Case '-[PartyPartyTests.ConsoleSecurityPolicyTests testRemoteSubframesAreCancelled]' started.
+Test Case '-[PartyPartyTests.ConsoleSecurityPolicyTests testRemoteSubframesAreCancelled]' passed (0.000 seconds).
+Test Case '-[PartyPartyTests.ConsoleSecurityPolicyTests testSameOriginNavigationAllowsAnyPathButNotOriginLookalikes]' started.
+Test Case '-[PartyPartyTests.ConsoleSecurityPolicyTests testSameOriginNavigationAllowsAnyPathButNotOriginLookalikes]' passed (0.000 seconds).
+Test Suite 'ConsoleSecurityPolicyTests' passed at 2026-09-16 10:27:37.675.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+Test Suite 'PartyPartyPackageTests.xctest' passed at 2026-09-16 10:27:37.675.
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+Test Suite 'All tests' passed at 2026-09-16 10:27:37.675.
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.002 (0.007) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

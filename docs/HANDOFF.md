@@ -1,12 +1,20 @@
 # partyparty handoff
 
+2026-09-16 release: **125.51 (273)** is processed and available to internal
+TestFlight testers; the invited external group is awaiting Apple beta review.
+The matching relay clock update and invitation-only website are deployed.
+[Release receipt and remaining Store blockers](receipts/release-273-20260916/README.md)
+record artifact hashes, verification, Apple IDs, and deployment versions. The
+Store draft is prepared but still needs a released-macOS build, supervised
+physical acceptance, current screenshots, and signed-in Apple web checks.
+
 2026-09-16: Synchronization work is in [synchronization.md](synchronization.md).
 Source/relay clock calibration and shared startup/recovery now target two seconds
 on native HLS and hls.js. Recovery uses the existing attachment with a two-second
 limit; the old 11-second recovery and inconsistent 1.5-second candidate were
 rejected. Publisher timestamps are preserved, hls.js is pinned to 1.7.3, and
 [receipts](receipts/sync-recovery-20260916/README.md) retain rejected candidates
-and mixed-engine checks. No release/upload was performed. Supervised physical
+and mixed-engine checks. Release status is above. Supervised physical
 phone, speaker, autoplay, and lock-screen validation remain open.
 
 2026-09-13: Instruction-only cleanup; application behavior unchanged. Earlier notes are preserved verbatim in [HANDOFF-history-2026-09-13.md](HANDOFF-history-2026-09-13.md). Read the relevant section when resuming its topic; historical release/status claims need revalidation.

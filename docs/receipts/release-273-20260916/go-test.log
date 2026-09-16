@@ -1,0 +1,19 @@
+ok  	partyparty	(cached)
+?   	partyparty/cmd/pporigin	[no test files]
+ok  	partyparty/internal/activate	(cached)
+ok  	partyparty/internal/broadcast	(cached)
+?   	partyparty/internal/config	[no test files]
+ok  	partyparty/internal/contribute	(cached)
+?   	partyparty/internal/devices	[no test files]
+ok  	partyparty/internal/diag	(cached)
+ok  	partyparty/internal/event	(cached)
+ok  	partyparty/internal/mediamtx	(cached)
+?   	partyparty/internal/netinfo	[no test files]
+ok  	partyparty/internal/origin	(cached)
+ok  	partyparty/internal/peers	(cached)
+ok  	partyparty/internal/relay	(cached)
+ok  	partyparty/internal/roomplane	(cached)
+ok  	partyparty/internal/schedule	(cached)
+ok  	partyparty/internal/server	(cached)
+ok  	partyparty/internal/stats	(cached)
+?   	partyparty/scripts/soakarm	[no test files]

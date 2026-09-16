@@ -73,13 +73,14 @@ Every viable mode publishes the same fixed geometry:
 - 500 ms segments;
 - 150 ms parts;
 - 48 retained segments;
-- `PART-HOLD-BACK` floor of 0.9 seconds;
-- `EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES` in the multivariant playlist;
-- `schedule.Delay == 3s` as the declared value.
+- `PART-HOLD-BACK` floor of 0.6 seconds;
+- `EXT-X-START:TIME-OFFSET=-2.000,PRECISE=YES` in the multivariant playlist;
+- `schedule.Delay == 2s` as the shared source-clock deadline.
 
-These are declared hints, not a proven native playback schedule. See
-[synchronization](synchronization.md) for the current implementation and native
-HTTPS measurements, and `docs/receipts/soak-lab-20260911/` for the older HTTP lab.
+Playlist hints alone do not establish synchronized playback. The guest page
+calibrates its source clock and aligns to the shared deadline; see
+[synchronization](synchronization.md) for the implementation and native HTTPS
+measurements, and `docs/receipts/soak-lab-20260911/` for the older HTTP lab.
 
 **Relayed guests never receive the attachment pin.** `schedule.RewritePlaylist`
 inserts `EXT-X-START` only into a body containing `#EXT-X-STREAM-INF`, and
