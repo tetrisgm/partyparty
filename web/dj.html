@@ -1143,6 +1143,7 @@
   <aside class="inspector" aria-label="Guests">
     <div class="joinrail" id="joinCard" aria-label="Share">
       <div class="inspectorhead">Invite guests<button class="iconbtn source-help" id="joinGuideBtn" type="button" aria-label="How listening works" title="How listening works">?</button></div>
+      <button class="ghost" id="inviteSetupBtn" type="button">Wi-Fi invitation & offline checklist</button>
       <div class="event-share">
         <div class="event-qr" id="shareCard">
           <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
@@ -1255,6 +1256,52 @@
 </div>
 
 <!-- Settings sheet (the gear): everything that isn't a during-the-party action. -->
+<dialog id="inviteSetup" style="max-width:680px;width:90%;border:0;border-radius:24px;padding:24px;color:#222;background:#fff">
+  <button class="ghost" id="inviteClose" type="button">Close</button>
+  <h2>Bring everyone into the party</h2>
+  <div id="inviteEditor">
+    <label for="inviteSSID">Wi-Fi network</label><input id="inviteSSID" maxlength="32" autocomplete="off">
+    <label for="invitePassword">Wi-Fi password</label><input id="invitePassword" type="password" maxlength="63" autocomplete="off">
+    <label for="inviteSecurity">Security</label><select id="inviteSecurity"><option value="WPA">WPA / WPA2 personal</option><option value="nopass">Open network</option></select>
+    <p>Wi-Fi details stay in this window and are cleared when you close it. Printed codes contain the password: share them only with your guests.</p>
+    <button class="ghost" id="inviteGenerate" type="button">Create invitation</button>
+  </div>
+  <p id="inviteError" role="status"></p>
+  <div id="invitePoster" hidden>
+    <h2>You're invited. Bring your headphones.</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:32px">
+      <section><h3>1. Join Wi-Fi</h3><p id="inviteNetworkName"></p><div id="inviteWifiQR"></div></section>
+      <section><h3>2. Scan to listen</h3><p>Open the page and tap Listen.</p><div id="invitePartyQR"></div></section>
+    </div>
+    <p id="invitePartyAddress" style="overflow-wrap:anywhere"></p>
+  </div>
+  <button class="ghost" id="invitePrint" type="button" hidden>Print invitation / Save PDF</button>
+  <section id="offlinePreparation"><h2>Prepare for offline</h2>
+    <p>Connect this Mac and a phone to the router you'll bring. Test again with the router's internet disconnected. Create the invitation after this test so it uses the offline party address.</p>
+    <button class="ghost" id="offlineCheck" type="button">Check this network</button>
+    <ul id="offlineResults" aria-live="polite"></ul>
+    <label><input type="checkbox" id="offlineMusic"> My music is downloaded and plays without internet.</label>
+    <label><input type="checkbox" id="offlinePhone"> A phone scanned the code and played with the router offline.</label>
+    <p>These checks apply to this network now. Recheck before your event; changing routers or certificate expiry can change readiness.</p>
+  </section>
+</dialog>
+<style>
+  #inviteSetup label{display:block;margin:12px 0 6px;color:#444}
+  #inviteSetup .ghost{color:#222;background:#f2f1ef;border:1px solid #ddd;border-radius:999px;font-weight:800;padding:10px 16px}
+  #inviteSetup #inviteGenerate,#inviteSetup #invitePrint{color:white;background:#ff2d55;border-color:#ff2d55}
+  #inviteClose{position:sticky;top:0;z-index:1}
+  #inviteSetup input:not([type=checkbox]),#inviteSetup select{width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;background:white;color:#222}
+  #inviteSetup p,#inviteSetup li{font-size:14px;line-height:1.5}
+  #inviteSetup::backdrop{background:rgba(0,0,0,.45)}
+  @media print {
+    body > *:not(#appChrome),#appChrome > *:not(#inviteSetup){display:none!important}
+    #appChrome{display:block!important}
+    #inviteSetup{display:block!important;position:static!important;max-width:none!important;width:auto!important;margin:0!important;max-height:none!important;overflow:visible!important}
+    #inviteSetup > *:not(#invitePoster){display:none!important}
+    #invitePoster{display:block!important}
+    #inviteSetup::backdrop{display:none}
+  }
+</style>
 <div class="sheetov" id="settingsSheet">
   <div class="sheet">
     <button class="cardx" id="settingsCloseBtn" type="button" aria-label="Close" title="Close">✕</button>
@@ -1737,6 +1784,57 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   }
 
   let lastLt = null, lastStatus = null, startError = '';
+  const inviteDialog = $('inviteSetup');
+  $('inviteSetupBtn').onclick = () => inviteDialog.showModal();
+  $('inviteClose').onclick = () => inviteDialog.close();
+  inviteDialog.addEventListener('close', () => {
+    $('invitePassword').value = ''; $('inviteSSID').value = '';
+    $('inviteWifiQR').replaceChildren(); $('invitePartyQR').replaceChildren();
+    $('inviteNetworkName').textContent = ''; $('invitePartyAddress').textContent = '';
+    $('invitePoster').hidden = true; $('invitePrint').hidden = true;
+    $('offlineMusic').checked = false; $('offlinePhone').checked = false;
+    $('offlineResults').replaceChildren(); $('inviteError').textContent = '';
+  });
+  $('inviteGenerate').onclick = () => {
+    const ssid = $('inviteSSID').value;
+    const password = $('invitePassword').value;
+    const security = $('inviteSecurity').value;
+    const address = $('joinLinkField').value || '';
+    $('invitePoster').hidden = true; $('invitePrint').hidden = true;
+    if (!ssid || !/^https:\/\//.test(address) || (security === 'WPA' && password.length < 8)) {
+      $('inviteError').textContent = 'Enter the Wi-Fi name and password (at least 8 characters), and wait for the secure party link.';
+      return;
+    }
+    const escapeWifi = value => value.replace(/[\\;,:\"]/g, '\\$&');
+    const payload = 'WIFI:T:' + security + ';S:' + escapeWifi(ssid) + ';P:' + escapeWifi(security === 'nopass' ? '' : password) + ';;';
+    try {
+      for (const [id, text] of [['inviteWifiQR', payload], ['invitePartyQR', address]]) {
+        $(id).replaceChildren();
+        new QRCode($(id), {text, width:220, height:220, correctLevel:QRCode.CorrectLevel.M});
+      }
+      $('inviteNetworkName').textContent = ssid;
+      $('invitePartyAddress').textContent = address;
+      $('invitePoster').hidden = false; $('invitePrint').hidden = false;
+      $('inviteError').textContent = '';
+    } catch (_) { $('inviteError').textContent = 'The invitation is too long for a QR code. Shorten the network details and try again.'; }
+  };
+  $('invitePrint').onclick = () => {
+    if (window.webkit?.messageHandlers?.pp) window.webkit.messageHandlers.pp.postMessage({action:'printInvitation'});
+    else window.print();
+  };
+  $('offlineCheck').onclick = async () => {
+    const list = $('offlineResults'); list.replaceChildren();
+    const add = text => { const li = document.createElement('li'); li.textContent = text; list.append(li); };
+    try {
+      const response = await fetch('/api/status', {cache:'no-store'});
+      if (!response.ok) throw new Error();
+      const status = await response.json(), lan = status.lan || {}, connection = status.connection || {};
+      add(lan.certReady ? '✓ Secure certificate available now.' : 'Connect to the internet to finish secure setup.');
+      add(lan.resolverMatches ? '✓ This network resolves the Mac’s secure address.' : 'This network cannot yet resolve the Mac locally. Configure your travel router before relying on offline playback.');
+      add(connection.mode === 'local' ? '✓ Local path selected without internet.' : connection.mode === 'relay' ? 'The room currently needs the internet relay.' : 'Disconnect the router’s internet and repeat the phone test.');
+      add(lan.lanListeners > 0 ? '✓ A guest is connected directly; confirm they can hear the music.' : 'Phone test still needed: join this Wi-Fi, scan, and tap Listen.');
+    } catch (_) { add('Could not check the Mac. Try again once the server is running.'); }
+  };
   function copySync(){
     const s = lastStatus; if (!s) return;
     const lt = s.latency || {};

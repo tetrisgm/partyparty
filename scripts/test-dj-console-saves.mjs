@@ -125,7 +125,7 @@ const server = http.createServer(async (request, response) => {
   }
   if (url.pathname.startsWith('/vendor/')) {
     response.writeHead(200, { 'Content-Type': 'application/javascript' });
-    response.end('window.QRCode=function(){this.clear=function(){}};window.QRCode.CorrectLevel={M:0,H:2};');
+    response.end(fs.readFileSync(path.join(root, 'web/vendor/qrcode.min.js')));
     return;
   }
   response.writeHead(404);
@@ -210,6 +210,23 @@ try {
   assert.equal(await page.locator('#macDoor,.macssobtn').count(), 0,
     'the account-era sign-in door returned');
 
+  await page.click('#inviteSetupBtn');
+  await page.fill('#inviteSSID', 'Beach; Friends');
+  await page.fill('#invitePassword', 'example-only-password');
+  await page.click('#inviteGenerate');
+  assert.equal(await page.locator('#invitePoster').isVisible(), true);
+  assert.equal(await page.locator('#inviteWifiQR canvas').count(), 1);
+  assert.equal(await page.locator('#invitePartyQR canvas').count(), 1);
+  await page.click('#offlineCheck');
+  await page.waitForFunction(() => document.querySelectorAll('#offlineResults li').length === 4);
+  await page.emulateMedia({media:'print'});
+  assert.equal(await page.locator('#inviteEditor').isVisible(), false);
+  assert.equal(await page.locator('#invitePoster').isVisible(), true);
+  await page.emulateMedia({media:'screen'});
+  if (process.env.PARTYPARTY_INVITE_SCREENSHOT) await page.screenshot({path:process.env.PARTYPARTY_INVITE_SCREENSHOT});
+  await page.click('#inviteClose');
+  assert.equal(await page.inputValue('#invitePassword'), '');
+  assert.equal(await page.locator('#inviteWifiQR canvas').count(), 0);
   assert.deepEqual(consoleErrors, [], `console errors: ${consoleErrors.join(' | ')}`);
   console.log('PASS dj console saves');
 } finally {

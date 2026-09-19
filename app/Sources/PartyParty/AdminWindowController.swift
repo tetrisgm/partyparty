@@ -403,6 +403,11 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
               ) else { return }
         guard let body = message.body as? [String: Any], let action = body["action"] as? String else { return }
         switch action {
+        case "printInvitation":
+            let operation = webView.printOperation(with: NSPrintInfo.shared)
+            operation.showsPrintPanel = true
+            operation.showsProgressPanel = true
+            operation.run()
         case "quit":
             NSApp.terminate(nil)
         case "setLoginItem":

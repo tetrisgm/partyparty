@@ -236,6 +236,7 @@ try {
     title: 'Sunrise',
     artist: 'The Second Track',
     artworkUrl: '/artwork-2.png',
+    matchId: '12345',
   };
   await page.waitForFunction(() =>
     window.__mediaMetadataWrites.at(-1)?.title === 'Sunrise' &&
@@ -245,6 +246,10 @@ try {
   assert.equal(refreshedMetadata.artist, 'The Second Track',
     'Media Session metadata must refresh while the existing playback session stays active');
   assert.match(refreshedMetadata.artwork[0].src, /\/artwork-2\.png$/);
+  await page.locator('#recognizedSongs summary').click();
+  assert.equal(await page.locator('#recognizedSongList a').count(), 3);
+  assert.equal(await page.locator('#recognizedSongList a').first().getAttribute('href'), 'https://www.shazam.com/track/12345');
+  assert.match(await page.locator('#recognizedSongList').textContent(), /Sunrise/);
 
   assert.deepEqual(externalRequests, [], `listener made external asset requests:\n${externalRequests.join('\n')}`);
   if (process.env.PARTYPARTY_RENDER_SCREENSHOT) {

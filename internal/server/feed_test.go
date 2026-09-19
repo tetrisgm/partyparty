@@ -148,10 +148,23 @@ func TestTheSetlistReachesTheConsole(t *testing.T) {
 		t.Fatalf("now playing did not survive: %v", body["nowPlaying"])
 	}
 
-	// A guest is not shown the DJ's record.
+	// Guests can browse the same bounded set while track identification is on.
+	if _, _, err := ev.SetRecognizedTrack("12345", "Recognized song", "Artist", ""); err != nil {
+		t.Fatal(err)
+	}
 	guest := decodeJSON(t, do(s, http.MethodGet, "/api/feed?since=0", "192.168.1.44:5555"))
+	if tracks, _ := guest["setlist"].([]any); len(tracks) != 4 {
+		t.Fatal("guest did not receive the setlist")
+	}
+	if track, _ := guest["nowPlaying"].(map[string]any); track["matchId"] != "12345" {
+		t.Fatal("guest lost the Shazam catalog ID")
+	}
+	if err := ev.SetFeature("trackId", false); err != nil {
+		t.Fatal(err)
+	}
+	guest = decodeJSON(t, do(s, http.MethodGet, "/api/feed?since=0", "192.168.1.44:5555"))
 	if _, ok := guest["setlist"]; ok {
-		t.Fatal("the setlist was served to a guest")
+		t.Fatal("disabled track identification exposed the setlist")
 	}
 }
 

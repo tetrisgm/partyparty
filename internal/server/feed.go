@@ -251,9 +251,8 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		current, recent := s.Events.TrackSnapshot()
 		body["nowPlaying"] = feedTrackFrom(current)
 		body["recentTracks"] = feedTracksFrom(recent)
-		// The night's whole set, for the DJ's own page. Guests get now-playing
-		// and the recent window; the record of what was played is the DJ's.
-		if dj {
+		// Share the bounded set with guests when track identification is enabled.
+		if dj || s.featureOn("trackId") {
 			body["setlist"] = feedTracksFrom(s.Events.Setlist(300))
 		}
 		if dj && s.featureOn("trackId") {
@@ -833,6 +832,7 @@ func (s *srv) eventState() map[string]any {
 }
 
 type feedTrack struct {
+	MatchID    string `json:"matchId,omitempty"`
 	Title      string `json:"title"`
 	Artist     string `json:"artist,omitempty"`
 	ArtworkURL string `json:"artworkUrl,omitempty"`
@@ -843,7 +843,7 @@ func feedTrackFrom(tr *event.CurrentTrack) *feedTrack {
 	if tr == nil || tr.Title == "" {
 		return nil
 	}
-	return &feedTrack{Title: tr.Title, Artist: tr.Artist, ArtworkURL: tr.ArtworkURL, SetAt: tr.SetAt}
+	return &feedTrack{Title: tr.Title, Artist: tr.Artist, ArtworkURL: tr.ArtworkURL, SetAt: tr.SetAt, MatchID: tr.MatchID}
 }
 
 func feedTracksFrom(tracks []event.CurrentTrack) []feedTrack {
@@ -852,7 +852,7 @@ func feedTracksFrom(tracks []event.CurrentTrack) []feedTrack {
 		if tr.Title == "" {
 			continue
 		}
-		out = append(out, feedTrack{Title: tr.Title, Artist: tr.Artist, ArtworkURL: tr.ArtworkURL, SetAt: tr.SetAt})
+		out = append(out, feedTrack{Title: tr.Title, Artist: tr.Artist, ArtworkURL: tr.ArtworkURL, SetAt: tr.SetAt, MatchID: tr.MatchID})
 	}
 	if out == nil {
 		out = []feedTrack{}

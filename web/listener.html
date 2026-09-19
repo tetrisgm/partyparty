@@ -711,6 +711,11 @@
       <button class="guestcountbtn" id="guestCountBtn" type="button">Guest list</button>
     </div>
     <div class="count" id="count"></div>
+    <details id="recognizedSongs" hidden style="text-align:left;margin:16px 0;padding:16px;border:1px solid var(--separator);border-radius:16px">
+      <summary style="cursor:pointer;font-weight:800">Recognized songs</summary>
+      <p>Open a song in your music app to save it. Service links need internet.</p>
+      <div id="recognizedSongList"></div>
+    </details>
     <div class="reactions" id="reactionBar" hidden>
       <button class="reactbtn" type="button" data-react="fire" aria-label="Fire" title="Fire">🔥</button>
       <button class="reactbtn" type="button" data-react="heart" aria-label="Heart" title="Heart">❤️</button>
@@ -3362,7 +3367,35 @@
         }
         setText(reactionAmbient, top ? top.emoji + ' ×' + top.n : '');
       }
-      function renderTrackID(nowPlaying){
+      let recognizedSignature = '';
+      function renderTrackID(nowPlaying, recentTracks = []){
+        const songs = [nowPlaying, ...recentTracks].filter(t => t && t.title && t.matchId);
+        const unique = [...new Map(songs.map(t => [t.matchId, t])).values()];
+        const songSignature = JSON.stringify([featureOn('trackId'), unique]);
+        if (songSignature !== recognizedSignature) {
+          recognizedSignature = songSignature;
+          const list = document.getElementById('recognizedSongList');
+          list.replaceChildren();
+          document.getElementById('recognizedSongs').hidden = !featureOn('trackId') || !unique.length;
+          for (const song of unique) {
+            const row = document.createElement('div');
+            row.style.cssText = 'padding:12px 0;border-top:1px solid var(--separator)';
+            const title = document.createElement('strong');
+            title.textContent = [song.title, song.artist].filter(Boolean).join(' - ');
+            row.append(title);
+            const links = document.createElement('div');
+            links.style.cssText = 'display:flex;flex-wrap:wrap;gap:16px;margin-top:8px';
+            const query = encodeURIComponent([song.artist, song.title].filter(Boolean).join(' '));
+            const services = [['Apple Music', 'https://music.apple.com/us/search?term=' + query], ['Spotify', 'https://open.spotify.com/search/' + query]];
+            if (/^\d+$/.test(String(song.matchId))) services.unshift(['Shazam', 'https://www.shazam.com/track/' + song.matchId]);
+            for (const [label, url] of services) {
+              const link = document.createElement('a');
+              link.textContent = label; link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+              links.append(link);
+            }
+            row.append(links); list.append(row);
+          }
+        }
         const next = (nowPlaying && nowPlaying.title) ? nowPlaying : null;
         const signature = JSON.stringify(next ? {
           title: String(next.title || ''),
@@ -3991,7 +4024,7 @@
           const featureChanged = setFeatures(data.features || {});
           renderDJLinks(data.links || []);
           updateReactionUI(data.reactions || {});
-          renderTrackID(data.nowPlaying || null, data.recentTracks || []);
+          renderTrackID(data.nowPlaying || null, data.setlist || data.recentTracks || []);
           if (profileChanged) { paintDJs(discoveredPeers); repaintPeople(); }
           if (featureChanged && feedOn) {
             newestAct = 0; nodes.clear(); expanded.clear(); albumItems.clear(); feedList.innerHTML = '';

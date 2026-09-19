@@ -1,5 +1,15 @@
 # partyparty handoff
 
+Unreleased hosting additions: the DJ's Invite guests rail opens Wi-Fi QR
+invitations with native Print / Save PDF and an offline checklist backed by
+current LAN/certificate/connection status. Wi-Fi details are memory-only and
+cleared on close. Guests can browse the bounded recognized setlist and open
+Shazam matches or Apple Music/Spotify searches; saving happens in those services.
+No announcements or DJ handover were added. Xcode Debug build, server/relay
+tests, and browser invitation/tracklist tests verify these changes; physical QR
+scanning and the native print dialog still need a device check. These additions
+and relay fix `87a747b` are not in submitted Store build 274.
+
 2026-09-16 release: **125.51 (273)** is processed and available to internal
 TestFlight testers; the invited external group is awaiting Apple beta review.
 The matching relay clock update and invitation-only website are deployed.
