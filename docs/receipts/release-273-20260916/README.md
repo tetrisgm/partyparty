@@ -60,9 +60,7 @@ checked-in initial-release text is retained. No App Store review was submitted.
 
 Remaining blockers:
 
-1. Build on Apple-released macOS with a new build number, then select that
-   processed build in the Store draft. This Mac is still on prerelease macOS.
-2. Complete supervised physical playback acceptance: multiple phones, staggered
+1. Complete supervised physical playback acceptance: multiple phones, staggered
    joins, recovery, real tap-to-play, locking/backgrounding, and acoustic sync.
 The outdated Store screenshots were replaced with two current 2880×1800 captures
 from the shipped PartyParty app. The source captures and normalized upload set
@@ -78,6 +76,8 @@ contains one removed item, matching the API history. App Privacy is published an
 shows both privacy URLs at `https://partyparty.party/privacy`, with the declared
 Email Address, User ID, and Device ID data types.
 
-The Store draft is prepared, but it is not submission-ready until the released-
-macOS build and supervised physical acceptance are closed. Do not attach the
-prerelease-host TestFlight package to imply otherwise.
+Build 274 was built
+on released macOS 27.0, uploaded and accepted by Apple as VALID, attached to
+version 125.51, and submitted for App Review as submission
+`4aca8275-18fb-4ae8-be5b-0b54123b2428` (WAITING_FOR_REVIEW). Only supervised
+physical acceptance remains open.
