@@ -667,6 +667,18 @@ func (m *Manager) cycleTo(ctx context.Context, target relayTarget) error {
 	playlist = schedule.RewritePlaylist(playlist)
 
 	names := mediaNames(playlist)
+	// Preload hints name future parts and may legitimately be unavailable.
+	// Every other reference must exist before advertising this snapshot.
+	var readyLines []string
+	for _, line := range strings.Split(string(playlist), "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#EXT-X-PRELOAD-HINT:") {
+			readyLines = append(readyLines, line)
+		}
+	}
+	required := make(map[string]bool)
+	for _, name := range mediaNames([]byte(strings.Join(readyLines, "\n"))) {
+		required[name] = true
+	}
 	if len(names) == 0 {
 		return errors.New("local playlist references no media yet")
 	}
@@ -690,9 +702,12 @@ func (m *Manager) cycleTo(ctx context.Context, target relayTarget) error {
 			if ctx.Err() != nil || !m.generationIsCurrent(target.generation, false) {
 				return err
 			}
-			// A part can vanish between being listed and being fetched at the tail
-			// of a live window. That is normal; skip it rather than failing the
-			// whole cycle and stalling every other part behind it.
+			// Retain the previous playable snapshot if a completed object is
+			// unavailable. The next cycle reads a fresh window and retries;
+			// publishing this one would hand every listener a broken reference.
+			if required[name] {
+				return fmt.Errorf("read required media %s: %w", name, err)
+			}
 			continue
 		}
 		if err := m.putTo(ctx, target, name, body, "video/mp4", false); err != nil {

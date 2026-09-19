@@ -102,9 +102,10 @@ The relay does not add a second target and no listener can change the room-wide
 value. Native HLS/AVPlayer is the production iPhone engine. Healthy playback is
 passive: a fresh attachment is aligned while muted, then the page stops
 positioning it. It does not continuously seek or rate-steer. A visible phone
-that remains at least 750 ms beyond the target for three measurements receives
-a fresh native HLS attachment. That correction remains available throughout a
-set and never runs while Safari is hidden or the phone is locked.
+that remains more than 150 ms off target after accounting for uncertainty for
+three measurements receives a bounded muted correction in the same attachment.
+That correction remains available throughout a set and never runs while Safari
+is hidden or the phone is locked.
 
 The Mac's playlists carry `PROGRAM-DATE-TIME`. Contribution uploads playlists
 and media without repackaging or re-encoding them, so direct and relayed guests
@@ -128,6 +129,9 @@ The contributor:
 - discovers the actual media playlist through the multivariant playlist;
 - uploads the matching guest page and its fixed assets;
 - sends every referenced media object once per origin incarnation;
+- publishes a playlist only after all completed media it references has uploaded;
+  an unavailable future preload hint is allowed, while a failed completed-media
+  fetch retains the previous snapshot until a fresh cycle succeeds;
 - rewrites `PART-HOLD-BACK` to the room floor and preserves everything else in
   the playlist, and media objects, byte for byte;
 - notices origin restarts through the room epoch and republishes fixed assets;

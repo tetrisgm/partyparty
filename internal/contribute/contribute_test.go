@@ -225,6 +225,43 @@ func TestMediaUploadsBeforeThePlaylistThatNamesIt(t *testing.T) {
 	}
 }
 
+func TestMissingMediaDoesNotPublishBrokenSnapshot(t *testing.T) {
+	for _, missing := range []string{"init.mp4", "seg7_part0.mp4", "seg7.mp4", "seg8_part0.mp4"} {
+		t.Run(missing, func(t *testing.T) {
+			var unavailable atomic.Bool
+			unavailable.Store(true)
+			base := localHandler()
+			local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if unavailable.Load() && strings.HasSuffix(r.URL.Path, "/"+missing) {
+					http.NotFound(w, r)
+					return
+				}
+				base.ServeHTTP(w, r)
+			}))
+			defer local.Close()
+			origin := newOriginStub()
+			remote := httptest.NewServer(origin.handler())
+			defer remote.Close()
+			m := New(Config{SourceURL: local.URL + "/party/index.m3u8", Target: func() (string, string) { return remote.URL + "/room/", "" }})
+			err := runOneCycle(t, m)
+			_, bodies, _ := origin.snapshot()
+			_, published := bodies[PublishedPlaylist]
+			preload := missing == "seg8_part0.mp4"
+			if published != preload || (err == nil) != preload {
+				t.Fatalf("published=%v error=%v; only a missing future preload may publish", published, err)
+			}
+			unavailable.Store(false)
+			if err := runOneCycle(t, m); err != nil {
+				t.Fatal(err)
+			}
+			_, bodies, _ = origin.snapshot()
+			if len(bodies[missing]) == 0 || len(bodies[PublishedPlaylist]) == 0 {
+				t.Fatal("recovery did not publish media and playlist")
+			}
+		})
+	}
+}
+
 // TestEachMediaFileUploadsOnce: re-uploading every part on every 50ms cycle would
 // multiply the DJ's uplink by the poll rate, defeating the point of the design.
 func TestEachMediaFileUploadsOnce(t *testing.T) {
