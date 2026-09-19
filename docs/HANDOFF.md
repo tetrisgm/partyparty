@@ -5,8 +5,10 @@ TestFlight testers; the invited external group is awaiting Apple beta review.
 The matching relay clock update and invitation-only website are deployed.
 [Release receipt and remaining Store blockers](receipts/release-273-20260916/README.md)
 record artifact hashes, verification, Apple IDs, and deployment versions. The
-Store draft is prepared but still needs a released-macOS build, supervised
-physical acceptance, current screenshots, and signed-in Apple web checks.
+Store draft is prepared but still needs a released-macOS build and supervised
+physical acceptance. Current desktop screenshots are uploaded and complete in
+Apple's screenshot set; App Store Connect sign-in is complete, review history is
+visible with no active rejection, and App Privacy is published.
 
 2026-09-16: Synchronization work is in [synchronization.md](synchronization.md).
 Source/relay clock calibration and shared startup/recovery now target two seconds

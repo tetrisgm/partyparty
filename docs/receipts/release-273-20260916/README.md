@@ -64,14 +64,20 @@ Remaining blockers:
    processed build in the Store draft. This Mac is still on prerelease macOS.
 2. Complete supervised physical playback acceptance: multiple phones, staggered
    joins, recovery, real tap-to-play, locking/backgrounding, and acoustic sync.
-3. Replace the three outdated Store screenshots. Existing images were backed up
-   under `build/release-273/previous-screenshots`. The current local Mac preview
-   contains the owner's personal party/profile details and was not uploaded.
-4. Sign in to App Store Connect to inspect exact historical review messages and
-   verify that App Privacy is published. Chrome, the in-app browser, and the
-   asc web session were signed out. API authentication works. The API review
-   history reports completed submissions with removed IAP items, not an active
-   rejection. [Review doctor](store-readiness.json) cannot verify web privacy.
+The outdated Store screenshots were replaced with two current 2880×1800 captures
+from the shipped PartyParty app. The source captures and normalized upload set
+are under `build/release-273/store-screenshots/` and
+`build/release-273/store-screenshots-normalized/`; Apple reports both assets
+`COMPLETE` in desktop screenshot set `6c22a6b9-74c3-4a66-9b09-0b41feec0f05`.
+The prior screenshots remain backed up under
+`build/release-273/previous-screenshots/`.
 
-The Store draft is prepared, but it is not submission-ready until these are
-closed. Do not attach the prerelease-host TestFlight package to imply otherwise.
+App Store Connect sign-in is complete through the account passkey. The web review
+history is visible and shows no active rejection; the latest completed submission
+contains one removed item, matching the API history. App Privacy is published and
+shows both privacy URLs at `https://partyparty.party/privacy`, with the declared
+Email Address, User ID, and Device ID data types.
+
+The Store draft is prepared, but it is not submission-ready until the released-
+macOS build and supervised physical acceptance are closed. Do not attach the
+prerelease-host TestFlight package to imply otherwise.
