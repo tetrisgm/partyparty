@@ -8,24 +8,19 @@ Shazam matches or Apple Music/Spotify searches; saving happens in those services
 No announcements or DJ handover were added. Xcode Debug build, server/relay
 tests, and browser invitation/tracklist tests verify these changes; physical QR
 scanning and the native print dialog still need a device check. These additions
-and relay fix `87a747b` are not in submitted Store build 274.
+and relay fix `87a747b` are in Store build 275.
 
 2026-09-16 release: **125.51 (273)** is processed and available to internal
 TestFlight testers; the invited external group is awaiting Apple beta review.
 The matching relay clock update and invitation-only website are deployed.
 [Release receipt and remaining Store blockers](receipts/release-273-20260916/README.md)
-record artifact hashes, verification, Apple IDs, and deployment versions. The
-Store version 125.51 build 274 was rejected on September 23. [Apple's review
-message](https://appstoreconnect.apple.com/apps/6794880742/distribution/reviewsubmissions/details/4aca8275-18fb-4ae8-be5b-0b54123b2428)
-declines the `com.apple.shazamd` temporary Mach lookup exception and requires a
-way to reopen the console after closing it. The Store source now removes
-ShazamKit recognition and that entitlement from the Store target, retains
-recognition in standalone, and adds an explicit Open PartyParty command to the
-app and Window menus. The local Store bundle and launch smoke pass; no new
-build has been uploaded or submitted. Current desktop screenshots and App
-Privacy are complete. A new Store build, review-note update, and resubmission
-remain for an owner-directed release; supervised physical playback acceptance
-also remains open.
+record artifact hashes, verification, Apple IDs, and deployment versions.
+
+2026-09-30: [Store build 275 release receipt](receipts/release-275-20260930/README.md).
+Apple approved it for TestFlight internal and external testing. App Store
+version 125.51 is resubmitted and **WAITING_FOR_REVIEW**; it is not yet
+available to customers. The version is set for manual release after approval.
+Supervised physical playback acceptance remains open.
 
 2026-09-16: Synchronization work is in [synchronization.md](synchronization.md).
 Source/relay clock calibration and shared startup/recovery now target two seconds
