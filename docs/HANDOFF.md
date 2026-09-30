@@ -19,7 +19,7 @@ record artifact hashes, verification, Apple IDs, and deployment versions.
 2026-09-30: [Store build 275 release receipt](receipts/release-275-20260930/README.md).
 Apple approved it for TestFlight internal and external testing. App Store
 version 125.51 is resubmitted and **WAITING_FOR_REVIEW**; it is not yet
-available to customers. The version is set for manual release after approval.
+available to customers. The version is set to release automatically on approval.
 Supervised physical playback acceptance remains open.
 
 2026-09-16: Synchronization work is in [synchronization.md](synchronization.md).
