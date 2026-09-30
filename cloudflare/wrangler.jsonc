@@ -54,8 +54,10 @@
     { "pattern": "*.partyparty.party/*", "zone_name": "partyparty.party" }
   ],
 
-  // Self-heal the machine-namespace DNS anchor.
-  "triggers": { "crons": ["* * * * *"] },
+  // Self-heal the machine-namespace DNS anchor and record relay health. Every
+  // five minutes: each run reads and writes R2 and calls the DNS API, and a
+  // minute cadence spent most of the account's free R2 write operations.
+  "triggers": { "crons": ["*/5 * * * *"] },
 
   "observability": { "enabled": true }
 }
