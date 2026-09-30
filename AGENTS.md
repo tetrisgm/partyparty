@@ -11,3 +11,14 @@ Mac menu-bar party server; guests use HTTPS LL-HLS and the active-room feed.
 - Pro is subscription-only. Never restore `fm.partyparty.app.pro.lifetime` or another one-off unlock.
 - Before Apple review, packaging, or upload work, read `docs/APPLE-RELEASE.md`.
 - No GitHub Actions workflows, secrets, or runners.
+
+## Deploys
+
+- Pushing to `main` deploys nothing. The `partyparty-site` Worker (`cloudflare/`)
+  deploys with `wrangler deploy` from the Mac, and app builds follow
+  `docs/APPLE-RELEASE.md`, only when the owner asks.
+- Cloud sessions cannot deploy: that needs the Mac's wrangler login, keys and
+  Keychain. Push a branch or open a PR and say what needs shipping.
+- Nothing from the owner's Mac reaches cloud sessions: not their global
+  instructions, logins, Keychain, or `~/dev/stack` (retired). Do not go looking
+  for them.
