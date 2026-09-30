@@ -1,12 +1,13 @@
+#if STANDALONE
 import Foundation
 import AVFoundation
 import CoreAudio
 import ShazamKit
 
 /// Track recognition lives in the APP process because ShazamKit authenticates
-/// by code-signing identity: fm.partyparty.app is the one identity with a
-/// provisioning profile carrying the ShazamKit service. The capture helper
-/// (fm.partyparty.capture) has no provisionable identity, so recognition
+/// by code-signing identity. Apple declined the Store app's temporary Mach
+/// lookup exception, so this runs only in the unsandboxed standalone edition.
+/// The capture helper (fm.partyparty.capture) has no provisionable identity, so recognition
 /// there died with error 202 ("Missing entitlements", HTTP 401 from Apple's
 /// catalog) on every provisioned build - proven on TestFlight 255, 2026-08-05.
 ///
@@ -289,3 +290,4 @@ final class AppTrackRecognizer: NSObject, SHSessionDelegate {
         if shouldLog { NSLog("PartyParty: track recognition unavailable (\(error.localizedDescription))") }
     }
 }
+#endif

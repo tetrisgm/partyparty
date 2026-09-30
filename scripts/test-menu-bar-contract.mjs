@@ -64,6 +64,10 @@ assert.match(delegate, /item\("Open \\\(appName\)", #selector\(showConsoleFromMe
   'the safety menu must be able to open the console');
 assert.match(delegate, /item\("Quit \\\(appName\)", #selector\(quit\)\)/,
   'the safety menu must be able to quit: the app is never uncloseable');
+assert.match(delegate, /let openConsole = item\("Open \\\(appName\)", #selector\(showConsoleFromMenu\)\)/,
+  'the Window menu must reopen the console after its main window closes');
+assert.match(delegate, /window\.addItem\(openConsole\)/,
+  'the reopen command must be present in the Window menu');
 assert.match(delegate, /popover\.behavior = \.transient/,
   'the popover must dismiss itself when the DJ clicks away');
 

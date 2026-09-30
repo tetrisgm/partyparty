@@ -15,11 +15,17 @@ TestFlight testers; the invited external group is awaiting Apple beta review.
 The matching relay clock update and invitation-only website are deployed.
 [Release receipt and remaining Store blockers](receipts/release-273-20260916/README.md)
 record artifact hashes, verification, Apple IDs, and deployment versions. The
-Store version 125.51 now has VALID Store build 274 attached and submitted for
-App Review (WAITING_FOR_REVIEW). Current desktop screenshots are uploaded and
-complete in Apple's screenshot set; App Store Connect sign-in is complete,
-review history is visible with no active rejection, and App Privacy is published.
-Supervised physical playback acceptance remains open.
+Store version 125.51 build 274 was rejected on September 23. [Apple's review
+message](https://appstoreconnect.apple.com/apps/6794880742/distribution/reviewsubmissions/details/4aca8275-18fb-4ae8-be5b-0b54123b2428)
+declines the `com.apple.shazamd` temporary Mach lookup exception and requires a
+way to reopen the console after closing it. The Store source now removes
+ShazamKit recognition and that entitlement from the Store target, retains
+recognition in standalone, and adds an explicit Open PartyParty command to the
+app and Window menus. The local Store bundle and launch smoke pass; no new
+build has been uploaded or submitted. Current desktop screenshots and App
+Privacy are complete. A new Store build, review-note update, and resubmission
+remain for an owner-directed release; supervised physical playback acceptance
+also remains open.
 
 2026-09-16: Synchronization work is in [synchronization.md](synchronization.md).
 Source/relay clock calibration and shared startup/recovery now target two seconds

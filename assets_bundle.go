@@ -35,9 +35,8 @@ func helper(name string) string {
 	return filepath.Join(d, name)
 }
 
-// ppcapture lives in Helpers as a real .app bundle: TCC needs a bundle
-// identity for a helper that carries its own sandbox profile (the shazamd
-// mach exception cannot ride an inherit-only child signature).
+// ppcapture lives in Helpers as a real .app bundle with its own stable path
+// and identity. The Store child inherits the app sandbox and audio permission.
 func helperPPCapture(string) string {
 	return filepath.Join(helper("ppcapture.app"), "Contents", "MacOS", "ppcapture")
 }

@@ -9,7 +9,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let server = ServerController()
     private var api: APIClient!
     private var poller: StatusPoller!
+#if STANDALONE
     private var trackRecognizer: AppTrackRecognizer!
+#endif
     private var statusItem: NSStatusItem!
     private var console: AdminWindowController?
     private var updater: Updater!
@@ -33,7 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         setupStatusItem()
         poller = StatusPoller(api: api)
+#if STANDALONE
         trackRecognizer = AppTrackRecognizer(api: api)
+#endif
         poller.onChange = { [weak self] s in
             guard let self else { return }
             self.updateIcon(s)
@@ -43,14 +47,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.updater.broadcastDidEnd()
             }
             self.wasBroadcasting = broadcasting
-            // Recognition follows the Mac-output broadcast: the app is the only
-            // identity ShazamKit will authenticate, so the recognizer lives
-            // here, on its own tap, and never touches the live audio path.
+#if STANDALONE
+            // ShazamKit recognition stays in the standalone edition. Apple
+            // declined the temporary Mach lookup exception for the Store app.
             if broadcasting && s.device == "mac" {
                 self.trackRecognizer.start()
             } else {
                 self.trackRecognizer.stop()
             }
+#endif
         }
         poller.start()
         showConsole()                         // open the window on launch (regular-app behavior)
@@ -314,6 +319,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = appMenu.addItem(withTitle: "About \(appName)",
                             action: #selector(showAbout), keyEquivalent: "")
         appMenu.addItem(.separator())
+        appMenu.addItem(item("Open \(appName)", #selector(showConsoleFromMenu)))
+        appMenu.addItem(.separator())
         _ = appMenu.addItem(withTitle: "Hide \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
         _ = appMenu.addItem(withTitle: "Quit \(appName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -334,6 +341,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         main.addItem(windowItem)
         let window = NSMenu(title: "Window")
         windowItem.submenu = window
+        let openConsole = item("Open \(appName)", #selector(showConsoleFromMenu))
+        openConsole.keyEquivalent = "0"
+        window.addItem(openConsole)
+        window.addItem(.separator())
         _ = window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         _ = window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         NSApp.windowsMenu = window

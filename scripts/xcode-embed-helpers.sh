@@ -64,7 +64,7 @@ if [ "${CODE_SIGNING_ALLOWED:-NO}" = "YES" ]; then
   # one per Go Live, on TestFlight 251-253 (2026-08-05), with no TCC request
   # ever reaching tccd. Under inherit, the audio tap's TCC identity is the app
   # itself ("PartyParty", whose Info.plist carries the usage strings), and the
-  # app's own entitlements (audio-input, network.client, shazamd mach-lookup)
+  # app's own entitlements (audio-input and network.client)
   # flow to the child through the inherited profile. The bundle keeps its own
   # name and bundle id purely for LaunchServices hygiene - sharing the app's id
   # is what minted the "PartyParty 2" ghost.

@@ -83,21 +83,15 @@ entitlement_value() {
 [ "$(entitlement_value "$APP" com.apple.security.device.audio-input)" = "true" ] || fail "audio input entitlement is missing"
 [ "$(entitlement_value "$APP" com.apple.security.files.user-selected.read-only)" = "true" ] ||
   fail "user-selected read-only file entitlement is missing"
-app_mach_services="$(entitlements "$APP" | /usr/bin/plutil -convert json -o - - | /usr/bin/python3 -c \
-  'import json,sys; print("\n".join(json.load(sys.stdin)["com.apple.security.temporary-exception.mach-lookup.global-name"]))')"
-[ "$app_mach_services" = "com.apple.shazamd" ] ||
-  fail "app has an unexpected temporary Mach service exception: $app_mach_services"
+if entitlement_value "$APP" com.apple.security.temporary-exception.mach-lookup.global-name >/dev/null 2>&1; then
+  fail "Store app requests a temporary Mach service exception rejected by App Review"
+fi
 if entitlement_value "$APP" com.apple.security.inherit >/dev/null 2>&1; then
   fail "main app must not inherit a sandbox"
 fi
 
-# ShazamKit, named explicitly so the failure carries its reason forward.
-#
-# The App ID has the ShazamKit capability, but the inspected Mac development and
-# App Store provisioning profiles do not expose the entitlement, and a binary
-# that CLAIMS com.apple.developer.shazamkit is killed at launch. Recognition
-# works through the Mach service exception above, not through this key. The set
-# check below would also catch it; this exists so nobody has to rediscover why.
+# The inspected Store provisioning profile does not grant ShazamKit, and Apple
+# rejected the temporary Mach lookup exception in review of build 274.
 if entitlement_value "$APP" com.apple.developer.shazamkit >/dev/null 2>&1; then
   fail "app claims com.apple.developer.shazamkit; the provisioning profiles do not carry it and the binary is killed at launch (see docs/HANDOFF.md)"
 fi
@@ -120,7 +114,7 @@ fi
 # looked at and then added here, instead of arriving unnoticed.
 unexpected_app_keys="$(entitlements "$APP" | /usr/bin/plutil -convert json -o - - | /usr/bin/python3 -c \
   'import json,sys; allowed=set(sys.argv[1].split(",")); print("\n".join(sorted(set(json.load(sys.stdin)) - allowed)))' \
-  'com.apple.application-identifier,com.apple.developer.team-identifier,com.apple.security.app-sandbox,com.apple.security.device.audio-input,com.apple.security.files.user-selected.read-only,com.apple.security.network.client,com.apple.security.network.server,com.apple.security.temporary-exception.mach-lookup.global-name')"
+  'com.apple.application-identifier,com.apple.developer.team-identifier,com.apple.security.app-sandbox,com.apple.security.device.audio-input,com.apple.security.files.user-selected.read-only,com.apple.security.network.client,com.apple.security.network.server')"
 [ -z "$unexpected_app_keys" ] ||
   fail "main app carries entitlements nothing asked for: $(printf '%s' "$unexpected_app_keys" | tr '\n' ' ')"
 
@@ -141,8 +135,8 @@ done
 # _libsecinit_appsandbox with SIGTRAP before main() - proven by six identical
 # crash reports across TestFlight 251-253 Go Live attempts (2026-08-05), while
 # the same binary ran fine under an unsandboxed parent. Its TCC identity is
-# therefore the app's, and the app's entitlements (audio-input, network.client,
-# the shazamd mach-lookup exception, asserted above) reach it via inheritance.
+# therefore the app's, and the app's audio-input and network.client
+# entitlements reach it via inheritance.
 capture="$APP/Contents/Helpers/ppcapture.app"
 # The helper still carries its OWN bundle id: sharing the app's id made
 # LaunchServices register two "PartyParty" apps (the "PartyParty 2" ghost)
@@ -154,10 +148,10 @@ capture_keys="$(entitlements "$capture" | /usr/bin/plutil -convert json -o - - |
 [ "$capture_keys" = $'com.apple.security.app-sandbox\ncom.apple.security.inherit' ] ||
   fail "ppcapture must carry exactly app-sandbox + inherit (an own profile SIGTRAPs at spawn): got $capture_keys"
 
-# Recognition lives in the APP (the only ShazamKit-authenticatable identity);
-# the capture helper must stay free of it.
-otool -L "$APP/Contents/MacOS/PartyParty" | grep -q '/ShazamKit.framework/' ||
-  fail "the app binary does not link ShazamKit (recognition would be silently absent)"
+# Store binaries must not link ShazamKit after Apple rejected the exception.
+if otool -L "$APP/Contents/MacOS/PartyParty" | grep -q '/ShazamKit.framework/'; then
+  fail "Store app still links ShazamKit after App Review rejected its sandbox exception"
+fi
 if otool -L "$APP/Contents/Helpers/ppcapture.app/Contents/MacOS/ppcapture" | grep -q '/ShazamKit.framework/'; then
   fail "ppcapture links ShazamKit again (recognition there can never authenticate - error 202)"
 fi
