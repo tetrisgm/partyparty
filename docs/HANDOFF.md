@@ -16,17 +16,14 @@ The matching relay clock update and invitation-only website are deployed.
 [Release receipt and remaining Store blockers](receipts/release-273-20260916/README.md)
 record artifact hashes, verification, Apple IDs, and deployment versions.
 
-2026-10-08: [Store build 275 release receipt](receipts/release-275-20260930/README.md).
-Apple approved it for TestFlight internal and external testing. App Store
-version 125.51 is **REJECTED** (submission `4aca8275-18fb-4ae8-be5b-0b54123b2428`,
-[review message](https://appstoreconnect.apple.com/apps/6794880742/distribution/reviewsubmissions/details/4aca8275-18fb-4ae8-be5b-0b54123b2428)).
-Apple cites 5.2.5 (emoji artwork in the app icon) and 2.1(a) (no populated
-demo mode). The source now has an original PP icon and an interactive local
-sample party in build 276; [review steps](../app-store/review-notes.txt) cover
-all sample views. Go, browser, and unsigned Xcode build checks passed. Build
-276 has **not** been uploaded; Store customers still have no approved version.
-The version is set to release automatically on approval. Supervised physical
-playback acceptance remains open.
+2026-10-08: [Store build 276 release receipt](receipts/release-276-20261008/README.md).
+It addresses Apple's icon and populated-demo rejection. Build 276 is valid
+and available to internal TestFlight testers; the invitation-only external
+group is **WAITING_FOR_BETA_REVIEW**. App Store version 125.51 with build 276
+is **WAITING_FOR_REVIEW**, resubmitted October 8. Customers cannot download it
+until Apple approves it; the pre-existing release setting is automatic after
+approval. [Reviewer steps](../app-store/review-notes.txt) cover the sample and
+live party. Supervised physical playback acceptance remains open.
 
 2026-09-16: Synchronization work is in [synchronization.md](synchronization.md).
 Source/relay clock calibration and shared startup/recovery now target two seconds

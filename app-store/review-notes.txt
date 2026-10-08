@@ -25,3 +25,9 @@ HTTPS QR code displayed in the Mac app. Removing the entitlement would prevent
 guest phones from connecting and would break the app's core functionality.
 
 Privacy policy and support links are available in the app's Settings sheet.
+
+Response to October 6 review: build 276 replaces the dancing-person emoji app
+icon with an original PP monogram. It also adds the populated, interactive
+sample party described above, available without a second device. This is a
+local review mode; the separate live-room steps remain available for testing
+the real HTTPS stream with an iPhone.
