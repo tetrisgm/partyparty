@@ -16,11 +16,15 @@ The matching relay clock update and invitation-only website are deployed.
 [Release receipt and remaining Store blockers](receipts/release-273-20260916/README.md)
 record artifact hashes, verification, Apple IDs, and deployment versions.
 
-2026-09-30: [Store build 275 release receipt](receipts/release-275-20260930/README.md).
+2026-10-08: [Store build 275 release receipt](receipts/release-275-20260930/README.md).
 Apple approved it for TestFlight internal and external testing. App Store
-version 125.51 is resubmitted and **WAITING_FOR_REVIEW**; it is not yet
-available to customers. The version is set to release automatically on approval.
-Supervised physical playback acceptance remains open.
+version 125.51 is **REJECTED** (submission `4aca8275-18fb-4ae8-be5b-0b54123b2428`,
+review email October 6). The email contains no reason. `asc review doctor`
+reports unresolved issues, while `asc web review show` returns Apple sign-in
+503; the Safari App Store Connect session has expired. Read the exact reviewer
+message after the owner signs in before changing code. The version is set to
+release automatically on approval. Supervised physical playback acceptance
+remains open.
 
 2026-09-16: Synchronization work is in [synchronization.md](synchronization.md).
 Source/relay clock calibration and shared startup/recovery now target two seconds
