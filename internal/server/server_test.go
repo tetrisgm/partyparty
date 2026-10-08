@@ -1,12 +1,37 @@
 package server
 
 import (
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"testing/fstest"
 
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
 )
+
+func TestReviewDemoIsLocalOnly(t *testing.T) {
+	s := New(Deps{Web: fstest.MapFS{"review-demo.html": {Data: []byte("sample party")}}})
+	for _, tc := range []struct {
+		remote string
+		want   int
+	}{
+		{"127.0.0.1:1234", http.StatusOK},
+		{"192.168.1.44:1234", http.StatusNotFound},
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/review-demo", nil)
+		r.RemoteAddr = tc.remote
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != tc.want {
+			t.Fatalf("remote %s: got %d, want %d", tc.remote, w.Code, tc.want)
+		}
+		if tc.want == http.StatusOK && !strings.Contains(w.Body.String(), "sample party") {
+			t.Fatal("demo content missing")
+		}
+	}
+}
 
 func TestParseDurSeconds(t *testing.T) {
 	cases := []struct {

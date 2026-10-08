@@ -1025,6 +1025,11 @@
     <div class="hint" id="capturePermHint" style="display:none;margin:6px 0 0">Turn on PartyParty in the list.</div>
   </div>
 
+  <div class="card" id="samplePartyCard" style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px;padding:14px 18px">
+    <div><b>Explore a sample party</b><div class="muted" style="margin-top:3px">See a populated room, guest player, wall, and settings on this Mac.</div></div>
+    <button class="ghost" id="samplePartyBtn" type="button" style="white-space:nowrap">Open sample party</button>
+  </div>
+
   <div class="eventtop">
     <header class="poster" id="eventHead">
       <div class="posterart" id="posterArt" aria-hidden="true"></div>
@@ -1507,6 +1512,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
 <script src="/vendor/qrcode.min.js"></script>
 <script>
   const $ = id => document.getElementById(id);
+  $('samplePartyBtn').addEventListener('click', () => { window.location.href = '/review-demo'; });
   const escT = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const INITIAL_GUEST_URL = __PP_INITIAL_GUEST_URL_JSON__;
   let qrText = null, lastState = 'idle', statusSeen = false;
@@ -1786,15 +1792,18 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   let lastLt = null, lastStatus = null, startError = '';
   const inviteDialog = $('inviteSetup');
   $('inviteSetupBtn').onclick = () => inviteDialog.showModal();
-  $('inviteClose').onclick = () => inviteDialog.close();
-  inviteDialog.addEventListener('close', () => {
+  function clearInviteSetup(){
     $('invitePassword').value = ''; $('inviteSSID').value = '';
     $('inviteWifiQR').replaceChildren(); $('invitePartyQR').replaceChildren();
     $('inviteNetworkName').textContent = ''; $('invitePartyAddress').textContent = '';
     $('invitePoster').hidden = true; $('invitePrint').hidden = true;
     $('offlineMusic').checked = false; $('offlinePhone').checked = false;
     $('offlineResults').replaceChildren(); $('inviteError').textContent = '';
-  });
+  }
+  // Clear the password before the close animation/event. It must not remain in
+  // the hidden form even for one turn after the DJ presses Close.
+  $('inviteClose').onclick = () => { clearInviteSetup(); inviteDialog.close(); };
+  inviteDialog.addEventListener('close', clearInviteSetup);
   $('inviteGenerate').onclick = () => {
     const ssid = $('inviteSSID').value;
     const password = $('invitePassword').value;

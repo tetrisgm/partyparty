@@ -1,6 +1,12 @@
-PartyParty is a two-device, same-Wi-Fi product. The Mac is the DJ server; an iPhone is the guest player.
+PartyParty is a two-device, same-Wi-Fi product. The Mac is the DJ server; an iPhone is the guest player. Build 276 also includes an offline, populated sample party for review on one Mac. The app icon is an original PP monogram; it no longer contains emoji artwork.
 
-Review steps:
+Sample party review steps (no second device or permissions needed):
+1. Launch PartyParty and click "Open sample party" near the top of the DJ console.
+2. The DJ console view shows a populated setlist, posts, participants, and invite flow. You can add a sample post and react to posts.
+3. Use the top navigation to open Guest player, Party wall, and Settings. Guest player includes working sample audio and the same posts. The sample audio is original generated tones, not the live HLS stream.
+4. Click "Back to my party" to return to the real room. Sample changes do not broadcast, write to the real party, or require network access.
+
+Live party review steps (two devices):
 1. Launch PartyParty. The app and guest room require no PartyParty account.
 2. Connect the Mac and a default-configured iPhone to the same Wi-Fi network.
 3. In the Mac app, choose "Mac output (everything)" or an available audio input and press Go Live.

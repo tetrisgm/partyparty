@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PartyParty · Sample party</title>
+<style>
+  :root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:#f2f2f4;background:#0e0e10;--pink:#ff2d55;--card:#1a1a1d;--line:rgba(255,255,255,.1);--muted:#a3a3ac}
+  *{box-sizing:border-box}body{margin:0;min-width:320px}button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid #ff7895;outline-offset:3px}[hidden]{display:none!important}
+  header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:12px clamp(18px,3vw,38px);background:rgba(14,14,16,.96);border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:800;white-space:nowrap}.mark{display:grid;place-items:center;width:31px;height:31px;border-radius:9px;background:linear-gradient(145deg,#ff6378,#aa225c);font-size:12px;letter-spacing:-2px;padding-right:2px}
+  nav{display:flex;gap:5px;flex-wrap:wrap;margin-left:auto}nav button{border:0;border-radius:999px;color:var(--muted);background:transparent;padding:8px 14px;font-weight:700}nav button.active{color:white;background:#34343a}
+  .exit{color:#fff;border:1px solid var(--line);background:#242429;border-radius:8px;padding:8px 12px;text-decoration:none;font-size:12px;font-weight:700}
+  .notice{max-width:1380px;margin:18px auto 0;padding:12px 16px;border:1px solid rgba(255,45,85,.4);border-radius:10px;background:rgba(255,45,85,.1);font-size:13px;line-height:1.5}.notice b{color:#ff91a8}
+  main{max-width:1380px;margin:auto;padding:22px clamp(18px,3vw,38px) 60px}.view-title{font-size:25px;margin:0 0 4px}.subtitle{color:var(--muted);margin:0 0 24px;font-size:13px}
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:22px}.stack{display:grid;gap:18px;align-content:start}.card{border-radius:14px;background:var(--card);box-shadow:inset 0 1px rgba(255,255,255,.06),0 12px 30px rgba(0,0,0,.2);padding:20px}.card h2{font-size:17px;margin:0 0 15px}.card p{line-height:1.5}
+  .poster{min-height:230px;display:flex;align-items:end;padding:25px;border-radius:20px;background:radial-gradient(circle at 72% 15%,#fe8274 0,transparent 34%),linear-gradient(140deg,#8a215e,#ff2d55 52%,#2c2550);box-shadow:0 20px 45px rgba(0,0,0,.3)}.poster h1{font-size:clamp(32px,5vw,61px);letter-spacing:-.05em;margin:0}.poster p{margin:4px 0 0;color:#ffe9ee;font-size:15px}.record{margin-left:auto;width:150px;height:150px;border:10px solid rgba(255,255,255,.9);border-radius:50%;position:relative;flex:none}.record:before{content:"";position:absolute;inset:27px;border:4px solid rgba(255,255,255,.62);border-radius:50%}.record:after{content:"";position:absolute;top:58px;left:58px;width:14px;height:14px;border-radius:50%;background:white}
+  .button{border:0;border-radius:999px;padding:10px 16px;background:var(--pink);color:white;font-weight:800}.button.secondary{background:#313137}.button:disabled{opacity:.5}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.muted{color:var(--muted)}.tiny{font-size:11px;color:var(--muted)}.pill{border-radius:999px;padding:4px 9px;background:#323238;font-size:11px;font-weight:800}.pill.pink{background:rgba(255,45,85,.17);color:#ff91a8}
+  .track{display:grid;grid-template-columns:32px 1fr auto;align-items:center;gap:11px;padding:12px 0;border-top:1px solid var(--line)}.track:first-of-type{border-top:0}.track b,.track small{display:block}.track small{color:var(--muted);margin-top:2px}.track .num{font-weight:800;color:#77777f}.track.active .num{color:var(--pink)}
+  .post{padding:14px 0;border-top:1px solid var(--line)}.post:first-of-type{border-top:0}.avatar{width:35px;height:35px;display:grid;place-items:center;border-radius:50%;background:#463248;font-weight:800;flex:none}.posthead{display:flex;align-items:center;gap:9px}.postbody{margin:7px 0 7px 44px;line-height:1.5}.postactions{margin-left:44px}.postactions button{color:var(--muted);background:none;border:0;padding:4px 7px;border-radius:6px}.postactions button:hover{background:#303036}.postactions button.on{color:#ff91a8}.reply{margin:8px 0 0 44px;color:var(--muted);font-size:12px}
+  .person{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}.person:first-of-type{border-top:0}.person small{display:block;color:var(--muted);margin-top:2px}
+  .inputrow{display:flex;gap:8px}input[type=text]{min-width:0;flex:1;background:#2b2b30;border:1px solid var(--line);border-radius:8px;color:white;padding:10px 12px}
+  .guest-wrap{max-width:430px;margin:auto;border:1px solid #333339;border-radius:24px;background:#f7f6f4;color:#19191e;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)}.guest-cover{padding:24px 24px 28px;background:linear-gradient(140deg,#81265b,#ff4e66);color:white}.guest-cover h2{font-size:32px;margin:40px 0 4px}.guest-cover p{margin:0;color:#ffe2ea}.guest-body{padding:20px}.guest-body .card{background:white;color:#19191e;box-shadow:0 3px 20px rgba(0,0,0,.08)}.guest-body .muted,.guest-body .tiny{color:#666670}.guest-body .post{border-color:#e8e8eb}.guest-body .postactions button{color:#686870}.guest-body .avatar{background:#f7d8e3}.guest-body input{background:#f4f3f5;color:#19191e;border-color:#e3e3e5}.guest-body .pill{background:#f1edf0;color:#7b2457}.guest-body .button.secondary{background:#ebe8eb;color:#27272a}
+  .wall{min-height:560px;border-radius:20px;background:linear-gradient(155deg,#2c1735,#100e17 60%);padding:clamp(20px,4vw,48px);display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,330px);gap:34px}.wall h2{font-size:clamp(34px,5vw,65px);margin:0 0 8px}.wall .post{font-size:17px}.wall .postbody{font-size:20px}.wall-side{border:1px solid var(--line);border-radius:15px;padding:25px;align-self:start;background:rgba(255,255,255,.06)}
+  .settings{max-width:760px}.setting{display:flex;justify-content:space-between;gap:18px;padding:16px 0;border-top:1px solid var(--line)}.setting:first-of-type{border-top:0}.setting b,.setting small{display:block}.setting small{color:var(--muted);margin-top:4px;line-height:1.4}.setting input{accent-color:var(--pink);width:19px;height:19px}.setting select{background:#303037;color:white;border:1px solid var(--line);border-radius:8px;padding:8px}
+  @media(max-width:800px){.grid,.wall{grid-template-columns:1fr}.record{width:100px;height:100px;border-width:7px}.record:before{inset:18px}.record:after{top:39px;left:39px}nav{margin-left:0;order:3;width:100%;overflow:auto}header{gap:9px}.exit{margin-left:auto}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="mark">PP</span> PartyParty</div>
+  <nav aria-label="Sample party views">
+    <button data-view="dj" class="active" type="button">DJ console</button>
+    <button data-view="guest" type="button">Guest player</button>
+    <button data-view="wall" type="button">Party wall</button>
+    <button data-view="settings" type="button">Settings</button>
+  </nav>
+  <a class="exit" href="/dj">Back to my party</a>
+</header>
+<div class="notice"><b>Sample party · local demo</b> — Explore a populated room without another device, an account, or microphone permission. Posts and settings here are sample data; this mode does not broadcast or change your real party.</div>
+<main>
+  <section id="view-dj" data-panel="dj">
+    <h1 class="view-title">DJ console</h1><p class="subtitle">A populated room with the setlist, live wall, guest activity, and invitation flow.</p>
+    <div class="grid"><div class="stack">
+      <div class="poster"><div><span class="pill">SAMPLE PARTY</span><h1>Sunset Soundcheck</h1><p>with DJ Nova · Studio Room</p></div><div class="record" aria-hidden="true"></div></div>
+      <div class="card"><h2>Tracks played <span class="pill pink">3 tracks</span></h2><div id="djTracks"></div></div>
+      <div class="card"><h2>Party feed</h2><div class="inputrow"><input id="djPostInput" type="text" maxlength="180" placeholder="Write a sample post"><button class="button" id="djPostButton" type="button">Post</button></div><div id="djPosts"></div></div>
+    </div><aside class="stack">
+      <div class="card"><h2>Invite guests</h2><p class="muted">A real room shares an HTTPS QR code and link. Open the guest tab to explore this sample on the same Mac.</p><button class="button secondary" data-go="guest" type="button">Open guest player</button></div>
+      <div class="card"><h2>Participants <span class="pill pink">3</span></h2><div class="person"><span class="avatar">N</span><div><b>DJ Nova</b><small>Host · Mac</small></div></div><div class="person"><span class="avatar">C</span><div><b>Casey</b><small>Listening · iPhone</small></div></div><div class="person"><span class="avatar">J</span><div><b>Jules</b><small>Listening · iPhone</small></div></div></div>
+      <div class="card"><h2>Broadcast</h2><span class="pill pink">SAMPLE · NO LIVE AUDIO</span><p class="muted">In a real party, select Mac output or an audio input and press Go live. Guests then join through the secure room link.</p><button class="button secondary" data-go="settings" type="button">Review room settings</button></div>
+    </aside></div>
+  </section>
+  <section id="view-guest" data-panel="guest" hidden>
+    <h1 class="view-title">Guest player</h1><p class="subtitle">The phone experience: join, listen, react, and post to the same party feed.</p>
+    <div class="guest-wrap"><div class="guest-cover"><span class="pill">SAMPLE PARTY</span><h2>Sunset Soundcheck</h2><p>DJ Nova is playing</p></div><div class="guest-body stack">
+      <div class="card"><span class="pill">NOW PLAYING</span><h2 style="margin:12px 0 3px">Second Sunrise</h2><div class="muted">PartyParty Demo · original sample</div><div class="row" style="margin-top:18px"><button class="button" id="sampleAudio" type="button" aria-pressed="false">Play sample audio</button><span class="tiny" id="sampleAudioState">Tap to hear a short original demo loop</span></div></div>
+      <div class="card"><h2>In the room</h2><div class="row"><span class="pill">DJ Nova</span><span class="pill">Casey</span><span class="pill">Jules</span></div></div>
+      <div class="card"><h2>Party feed</h2><div class="inputrow"><input id="guestPostInput" type="text" maxlength="180" placeholder="Say something to the room"><button class="button" id="guestPostButton" type="button">Post</button></div><div id="guestPosts"></div></div>
+    </div></div>
+  </section>
+  <section id="view-wall" data-panel="wall" hidden>
+    <h1 class="view-title">Party wall</h1><p class="subtitle">The projected room view shows the same posts and activity.</p>
+    <div class="wall"><div><span class="pill pink">SAMPLE PARTY</span><h2>Sunset Soundcheck</h2><p class="muted">With DJ Nova · 3 people in the room</p><div id="wallPosts"></div></div><div class="wall-side"><div class="record" style="margin:0 auto 22px;max-width:140px;max-height:140px" aria-hidden="true"></div><h2 style="font-size:25px">Join the party</h2><p class="muted">A live wall displays the room’s scannable QR code. In this local demo, open the guest player directly.</p><button class="button" data-go="guest" type="button">View guest player</button></div></div>
+  </section>
+  <section id="view-settings" data-panel="settings" hidden>
+    <h1 class="view-title">Settings</h1><p class="subtitle">Explore the room controls. Changes in this sample stay in this page.</p>
+    <div class="settings card"><h2>Party settings</h2>
+      <div class="setting"><div><b>Party reach</b><small>Wi-Fi keeps guest audio and media on your local network. Cloud relay is optional for isolated networks.</small></div><select aria-label="Sample party reach"><option>Wi-Fi only</option><option>Wi-Fi + cloud relay</option></select></div>
+      <div class="setting"><div><b>Guest posts</b><small>Let guests share text and photos in the room feed.</small></div><input type="checkbox" checked aria-label="Sample guest posts"></div>
+      <div class="setting"><div><b>Reactions</b><small>Show hearts and reactions on the party wall.</small></div><input type="checkbox" checked aria-label="Sample reactions"></div>
+      <div class="setting"><div><b>Track identification</b><small>Show recognized tracks in the setlist when available.</small></div><input type="checkbox" checked aria-label="Sample track identification"></div>
+      <div class="setting"><div><b>Audio source</b><small>Choose Mac output or a connected audio input before going live.</small></div><select aria-label="Sample audio source"><option>Mac output (everything)</option><option>Connected audio input</option></select></div>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const tracks = [
+    ['Second Sunrise', 'PartyParty Demo', 'Now'],
+    ['Afterglow Drive', 'PartyParty Demo', '8:42 PM'],
+    ['Blue Hour', 'PartyParty Demo', '8:38 PM'],
+  ];
+  const posts = [
+    {id:1, name:'DJ Nova', initial:'N', text:'Welcome to Sunset Soundcheck! Tell us where you are listening from.', likes:4, reply:'Casey: Listening from the patio.'},
+    {id:2, name:'Casey', initial:'C', text:'This set is exactly what the evening needed.', likes:2, reply:''},
+    {id:3, name:'Jules', initial:'J', text:'Hello from the back of the room. Love this track!', likes:1, reply:''},
+  ];
+  let nextID = 4;
+  const escape = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function show(view) {
+    document.querySelectorAll('[data-panel]').forEach(p => { p.hidden = p.dataset.panel !== view; });
+    document.querySelectorAll('nav [data-view]').forEach(b => { b.classList.toggle('active', b.dataset.view === view); b.setAttribute('aria-current', b.dataset.view === view ? 'page' : 'false'); });
+    history.replaceState(null, '', '#'+view);
+    window.scrollTo(0,0);
+  }
+  document.querySelectorAll('[data-view],[data-go]').forEach(b => b.addEventListener('click', () => show(b.dataset.view || b.dataset.go)));
+  function render() {
+    document.getElementById('djTracks').innerHTML = tracks.map((t,i) => '<div class="track'+(i===0?' active':'')+'"><span class="num">'+(i+1)+'</span><div><b>'+escape(t[0])+'</b><small>'+escape(t[1])+'</small></div><span class="tiny">'+escape(t[2])+'</span></div>').join('');
+    const markup = posts.map(p => '<article class="post"><div class="posthead"><span class="avatar">'+escape(p.initial)+'</span><b>'+escape(p.name)+'</b><span class="tiny">· sample</span></div><div class="postbody">'+escape(p.text)+'</div><div class="postactions"><button type="button" data-like="'+p.id+'" class="'+(p.liked?'on':'')+'" aria-label="React to '+escape(p.name)+' post">♥ '+p.likes+'</button></div>'+(p.reply?'<div class="reply">'+escape(p.reply)+'</div>':'')+'</article>').join('');
+    ['djPosts','guestPosts','wallPosts'].forEach(id => { document.getElementById(id).innerHTML = markup; });
+  }
+  document.addEventListener('click', e => { const b = e.target.closest('[data-like]'); if (!b) return; const p = posts.find(x => x.id === Number(b.dataset.like)); if (!p) return; p.liked = !p.liked; p.likes += p.liked ? 1 : -1; render(); });
+  function addPost(inputID, name, initial) { const input = document.getElementById(inputID); const text = input.value.trim(); if (!text) return; posts.unshift({id:nextID++,name,initial,text,likes:0,reply:''}); input.value=''; render(); }
+  document.getElementById('djPostButton').onclick = () => addPost('djPostInput','DJ Nova','N');
+  document.getElementById('guestPostButton').onclick = () => addPost('guestPostInput','You','Y');
+  ['djPostInput','guestPostInput'].forEach(id => document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById(id === 'djPostInput' ? 'djPostButton' : 'guestPostButton').click(); } }));
+  let audio = null, timer = null, playing = false;
+  const audioButton = document.getElementById('sampleAudio');
+  function stopAudio() { if (timer) clearInterval(timer); timer = null; if (audio) { audio.close(); audio = null; } playing = false; audioButton.textContent='Play sample audio'; audioButton.setAttribute('aria-pressed','false'); document.getElementById('sampleAudioState').textContent='Tap to hear a short original demo loop'; }
+  audioButton.addEventListener('click', async () => {
+    if (playing) { stopAudio(); return; }
+    const Context = window.AudioContext || window.webkitAudioContext;
+    if (!Context) { document.getElementById('sampleAudioState').textContent='Audio preview is unavailable in this browser'; return; }
+    audio = new Context(); await audio.resume(); playing = true; audioButton.textContent='Stop sample audio'; audioButton.setAttribute('aria-pressed','true'); document.getElementById('sampleAudioState').textContent='Playing original sample tones';
+    let step=0; const notes=[220,261.63,329.63,392,329.63,261.63,246.94,293.66];
+    const tone=() => { if (!audio || audio.state==='closed') return; const osc=audio.createOscillator(), gain=audio.createGain(), now=audio.currentTime; osc.type='sine'; osc.frequency.value=notes[step++ % notes.length]; gain.gain.setValueAtTime(0.0001,now); gain.gain.exponentialRampToValueAtTime(0.09,now+0.03); gain.gain.exponentialRampToValueAtTime(0.0001,now+0.38); osc.connect(gain).connect(audio.destination); osc.start(now); osc.stop(now+0.4); };
+    tone(); timer=setInterval(tone,430);
+  });
+  window.addEventListener('pagehide', stopAudio);
+  render(); show(['dj','guest','wall','settings'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'dj');
+})();
+</script>
+</body>
+</html>

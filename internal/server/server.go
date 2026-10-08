@@ -429,6 +429,12 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveWeb(w, r, "listener.html", "no-cache")
 	case p == "/dj" || p == "/dj/":
 		s.serveWeb(w, r, "dj.html", "no-cache")
+	case p == "/review-demo" || p == "/review-demo/":
+		if !s.isDJ(r) {
+			http.NotFound(w, r)
+			return
+		}
+		s.serveWeb(w, r, "review-demo.html", "no-cache")
 	case p == "/wall" || p == "/wall/":
 		s.serveWeb(w, r, "wall.html", "no-cache")
 	case p == "/art-512.png":
