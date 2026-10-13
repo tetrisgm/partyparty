@@ -20,5 +20,4 @@ Mac menu-bar party server; guests use HTTPS LL-HLS and the active-room feed.
 - Cloud sessions cannot deploy: that needs the Mac's wrangler login, keys and
   Keychain. Push a branch or open a PR and say what needs shipping.
 - Nothing from the owner's Mac reaches cloud sessions: not their global
-  instructions, logins, Keychain, or `~/dev/stack` (retired). Do not go looking
-  for them.
+  instructions, logins, or Keychain. Do not go looking for them.
