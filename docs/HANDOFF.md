@@ -25,6 +25,14 @@ until Apple approves it; the pre-existing release setting is automatic after
 approval. [Reviewer steps](../app-store/review-notes.txt) cover the sample and
 live party. Supervised physical playback acceptance remains open.
 
+2026-10-14: **125.51 (build 276) is LIVE on the Mac App Store**
+(`READY_FOR_DISTRIBUTION`, auto-released on approval 15:31 UTC):
+https://apps.apple.com/us/app/partyparty-dj-wi-fi-radio/id6794880742.
+Build 276 predates the guest-surface hardening and EXIF stripping
+(`1a36028`, `5b6a771`); those need the next build. `asc review doctor`
+flags for next version: empty What's New, keywords repeating name/subtitle
+terms. The site and `AGENTS.md` still describe invitation-only distribution.
+
 2026-09-16: Synchronization work is in [synchronization.md](synchronization.md).
 Source/relay clock calibration and shared startup/recovery now target two seconds
 on native HLS and hls.js. Recovery uses the existing attachment with a two-second
