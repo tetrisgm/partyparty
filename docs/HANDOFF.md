@@ -46,9 +46,9 @@ analysis is the known cost, not a work item.
 deleted/hidden post media no longer served, guest-profile rate limit + roster cap
 + atomic save, journal fsync, 2 GiB free-disk floor for uploads (no file-size
 cap), party-salted guest handles instead of raw cids on `/api/peer`. Still open
-from the [audit](HANDOFF-history-2026-09-13.md#guest-surface-audit-2026-09-11):
-EXIF/GPS on guest photos, unauthenticated Bonjour peers, relay-side guest rate
-limiting at the origin.
+from the [audit](HANDOFF-history-2026-09-13.md#guest-surface-audit-2026-09-11),
+by owner choice: unauthenticated Bonjour peers and relay-side guest rate
+limiting. Guest JPEGs now lose GPS/XMP location but keep Orientation (`exif.go`).
 
 ## Recent recorded checkpoints
 
