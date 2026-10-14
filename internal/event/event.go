@@ -1081,6 +1081,13 @@ func (s *Store) SaveMedia(origName string, r io.Reader) (Media, error) {
 	if err := f.Close(); err != nil {
 		return Media{}, err
 	}
+	// Strip location before the file becomes visible (see exif.go).
+	if err := scrubLocationFile(tmp, origName); err != nil {
+		return Media{}, err
+	}
+	if st, err := os.Stat(tmp); err == nil {
+		n = st.Size()
+	}
 	// Link publishes the completed inode atomically without overwriting the
 	// astronomically unlikely case of a colliding generated media ID.
 	if err := os.Link(tmp, dst); err != nil {
@@ -1127,6 +1134,13 @@ func (s *Store) ImportMedia(id, origName string, r io.Reader) (Media, error) {
 	}
 	if err := f.Close(); err != nil {
 		return Media{}, err
+	}
+	// Strip location before the file becomes visible (see exif.go).
+	if err := scrubLocationFile(tmp, origName); err != nil {
+		return Media{}, err
+	}
+	if st, err := os.Stat(tmp); err == nil {
+		n = st.Size()
 	}
 	if err := os.Link(tmp, dst); err != nil && !os.IsExist(err) {
 		return Media{}, err
