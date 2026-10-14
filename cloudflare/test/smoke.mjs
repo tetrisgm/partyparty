@@ -713,12 +713,15 @@ test("launch CTAs use measurable first-party redirects", async () => {
   }
 });
 
-test("the product site uses the dancer favicon", async () => {
+test("the product site uses the app-icon favicon", async () => {
   const root = new URL("../", import.meta.url);
   const html = readFileSync(new URL("../site/index.html", root), "utf8");
   const icon = readFileSync(new URL("../site/favicon.svg", root), "utf8");
   assert.match(html, /href="\/favicon\.svg\?v=2" type="image\/svg\+xml"/);
-  assert.match(icon, /🕺/u);
+  // c6479dd replaced the dancer emoji with the app icon's gradient mark for
+  // Apple review; the favicon follows the app icon.
+  assert.match(icon, /id="background"/);
+  assert.doesNotMatch(icon, /🕺/u);
 });
 
 test("launch support pages carry canonical social metadata", async () => {
