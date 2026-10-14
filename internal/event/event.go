@@ -1155,6 +1155,29 @@ func (s *Store) MediaPath(id string) (string, bool) {
 	return p, true
 }
 
+// MediaWithdrawn reports whether a media id belongs to a post that has been
+// deleted, or hidden from guests. Deleting a post used to remove it from the
+// feed while /media/<id> and /media/thumb/<id> kept serving the file to anyone
+// holding the URL, so "delete" did not delete. The file stays on disk for the
+// DJ's party folder; the HTTP routes stop serving it. Media not yet attached to
+// any post (upload-then-post) is not withdrawn.
+func (s *Store) MediaWithdrawn(id string, dj bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.posts {
+		for _, m := range p.Media {
+			if m.ID != id {
+				continue
+			}
+			if p.Deleted {
+				return true
+			}
+			return !dj && normalizeState(p.State) == StateHidden
+		}
+	}
+	return false
+}
+
 func thumbURL(id string) string { return "/media/thumb/" + id }
 
 func thumbFileName(id string) string { return id + ".jpg" }
@@ -1468,13 +1491,25 @@ func (s *Store) SetGuestProfile(cid, name, emoji string) error {
 	defer s.mu.Unlock()
 	g, ok := s.guests[cid]
 	if !ok {
+		// Bounded: each new cid used to add a record and rewrite the whole
+		// roster under the store lock, so one phone minting cids grew the map
+		// without limit and made every call slower than the last.
+		if len(s.guests) >= maxGuests {
+			return errors.New("too many guests")
+		}
 		g = &Guest{Created: time.Now().UnixMilli()}
 		s.guests[cid] = g
+	} else if g.Pseudonym == name && g.Emoji == emoji {
+		return nil // nothing changed; do not rewrite the roster
 	}
 	g.Pseudonym = name
 	g.Emoji = emoji
 	return s.saveGuestsLocked()
 }
+
+// maxGuests bounds the guest roster. Far above any real party, far below what a
+// script minting cids would reach.
+const maxGuests = 5000
 
 // SetCurrentTrack stores the DJ's manually shared now-playing track and rotates
 // the previous current track into the recent history.
@@ -1713,7 +1748,34 @@ func (s *Store) saveGuestsLocked() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dataPath(s.dir, "guests.json"), data, 0o600)
+	// Write-then-rename: rewriting in place meant a crash mid-write destroyed
+	// the whole roster.
+	return writeFileAtomic(dataPath(s.dir, "guests.json"), data, 0o600)
+}
+
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(name, path)
 }
 
 // TrackAskCount reports recent "what's this track?" taps.
@@ -1946,8 +2008,13 @@ func (s *Store) appendLine(l line) error {
 			return err
 		}
 	}
-	_, err = f.Write(append(data, '\n'))
-	return err
+	if _, err := f.Write(append(data, '\n')); err != nil {
+		return err
+	}
+	// Durable before acknowledged, as the journal contract says. Guest writes
+	// are rate limited per address, so this is a handful of syncs a second at
+	// most, not a stream that competes with the audio path.
+	return f.Sync()
 }
 
 // endsMidLine reports whether the journal's final byte is something other than

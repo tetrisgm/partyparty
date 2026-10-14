@@ -585,6 +585,16 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeFeatureDisabled(w)
 			return true
 		}
+		// No per-file size cap, deliberately: guests post full-quality phone
+		// video. What IS bounded is the Mac's disk. An upload may use free space
+		// down to uploadDiskFloor and no further, so one phone cannot fill the
+		// disk the capture, muxer and journal all write to during a set.
+		budget, ok := uploadBudget(s.Events.Dir())
+		if !ok {
+			writeJSON(w, http.StatusInsufficientStorage, map[string]any{"error": "the DJ's Mac is out of space for uploads"})
+			return true
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, budget)
 		// Current guest clients send the original File as the request body. This
 		// avoids browser-side transcoding or multipart buffering and lets large
 		// videos stream directly to disk. Keep multipart for older clients and
@@ -642,6 +652,12 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		var body struct{ CID, Name, Emoji string }
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		// Rate limited like every other guest write. It was the one guest write
+		// path with no limiter at all, and each call rewrote the whole roster.
+		if !s.limits.allow(guestLimitKey(body.CID, r), "profile") {
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment", "retry": true})
 			return true
 		}
 		if err := s.Events.SetGuestProfile(body.CID, body.Name, body.Emoji); err != nil {
@@ -869,7 +885,7 @@ func (s *srv) handleMedia(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/media/thumb/") {
 		id := strings.TrimPrefix(r.URL.Path, "/media/thumb/")
 		p, ok := s.Events.ThumbPath(id)
-		if !ok {
+		if !ok || s.Events.MediaWithdrawn(id, s.isDJ(r)) {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
@@ -879,7 +895,7 @@ func (s *srv) handleMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	id := strings.TrimPrefix(r.URL.Path, "/media/")
 	p, ok := s.Events.MediaPath(id)
-	if !ok {
+	if !ok || s.Events.MediaWithdrawn(id, s.isDJ(r)) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}

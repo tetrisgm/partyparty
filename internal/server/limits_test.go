@@ -113,3 +113,31 @@ func TestGuestLimitKeyFallsBackToTheCidOnlyForRelayedWrites(t *testing.T) {
 		t.Fatal("a relayed write with no cid produced an empty key")
 	}
 }
+
+func TestUploadBudgetKeepsTheDiskFloor(t *testing.T) {
+	budget, ok := uploadBudget(t.TempDir())
+	if !ok {
+		t.Skip("this machine is already under the upload floor")
+	}
+	if budget <= 0 {
+		t.Fatalf("budget = %d with room available", budget)
+	}
+	if _, ok := uploadBudget("/definitely/not/a/dir"); !ok {
+		t.Fatal("an unreadable filesystem must not block uploads")
+	}
+}
+
+func TestGuestHandleHidesTheCidButMatchesAcrossMacs(t *testing.T) {
+	var s srv // no event store: party id is empty, which is still a shared salt
+	h := s.guestHandle("secret-cid")
+	if h == "" || strings.Contains(h, "secret-cid") {
+		t.Fatalf("handle %q leaks or is empty", h)
+	}
+	var other srv
+	if other.guestHandle("secret-cid") != h {
+		t.Fatal("two Macs in the same party derived different handles; re-homing guests would be double counted")
+	}
+	if s.guestHandle("another-cid") == h {
+		t.Fatal("two guests collided on one handle")
+	}
+}

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -1100,7 +1102,7 @@ func (s *srv) peerState(since int64) peers.Peer {
 	publicRoster := make([]peers.Guest, 0, len(roster))
 	for _, listener := range roster {
 		publicRoster = append(publicRoster, peers.Guest{
-			ID: listener.ID, Name: listener.Name, Emoji: listener.Emoji, Paused: listener.Paused, DJID: listener.DJID,
+			ID: s.guestHandle(listener.ID), Name: listener.Name, Emoji: listener.Emoji, Paused: listener.Paused, DJID: listener.DJID,
 		})
 	}
 	var posts []event.Post
@@ -1302,11 +1304,13 @@ func (s *srv) listenerGroups(local []stats.Listener) []publicListenerGroup {
 			person: publicListener{Name: listenerName, Emoji: emoji},
 		}
 	}
+	// Local and relayed ids go through the same handle peers publish, so a guest
+	// re-homing between Macs still matches themselves and is counted once.
 	for _, listener := range local {
-		assign(listener.ID, listener.Name, listener.Emoji, listener.DJID, !listener.Paused)
+		assign(s.guestHandle(listener.ID), listener.Name, listener.Emoji, listener.DJID, !listener.Paused)
 	}
 	for _, listener := range s.RelayGuests() {
-		assign(listener.ID, listener.Name, listener.Emoji, listener.DJID, !listener.Paused)
+		assign(s.guestHandle(listener.ID), listener.Name, listener.Emoji, listener.DJID, !listener.Paused)
 	}
 	for _, peer := range roomPeers {
 		if peer.Room == nil {
@@ -1845,4 +1849,24 @@ func compactFields(m map[string]any) string {
 		fmt.Fprintf(&b, "%s=%s ", k, s)
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// guestHandle is the identity a guest is known by OUTSIDE this Mac.
+//
+// /api/peer used to publish each listener's raw cid, unauthenticated, to
+// anything on the LAN, and the cid is exactly what authorizes writing that
+// guest's profile and posting as them. Peers only need a stable key to count a
+// guest once across Macs, so they get a hash instead. The salt is the PARTY id,
+// not a per-process secret: every Mac in the room must derive the same handle
+// for the same guest, or a guest re-homing between Macs is counted twice.
+func (s *srv) guestHandle(cid string) string {
+	if cid == "" {
+		return ""
+	}
+	party := ""
+	if s.Events != nil {
+		party = s.Events.PartyID()
+	}
+	sum := sha256.Sum256([]byte("pp-guest\x00" + party + "\x00" + cid))
+	return hex.EncodeToString(sum[:8])
 }

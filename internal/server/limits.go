@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -12,6 +13,7 @@ const (
 	commentLimitInterval  = 2 * time.Second
 	reactionLimitInterval = time.Second
 	trackIDLimitInterval  = 3 * time.Second
+	profileLimitInterval  = 2 * time.Second
 	limitEntryTTL         = time.Minute
 	maxLimitEntries       = 4096
 )
@@ -32,6 +34,7 @@ func newLimiter() *limiter {
 			"comment":  commentLimitInterval,
 			"reaction": reactionLimitInterval,
 			"track-id": trackIDLimitInterval,
+			"profile":  profileLimitInterval,
 		},
 		now: time.Now,
 	}
@@ -128,4 +131,22 @@ func guestLimitKey(cid string, r *http.Request) string {
 		return clipStr(cid, 64)
 	}
 	return "unknown"
+}
+
+// uploadDiskFloor is the free space an upload may never take the Mac below.
+const uploadDiskFloor = 2 << 30
+
+// uploadBudget is how many bytes one upload may write into dir before the disk
+// would drop under uploadDiskFloor. ok is false when there is no room at all.
+// If free space cannot be read, uploads are not blocked on it.
+func uploadBudget(dir string) (int64, bool) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(dir, &st); err != nil {
+		return 1 << 62, true
+	}
+	free := int64(st.Bavail) * int64(st.Bsize)
+	if free <= uploadDiskFloor {
+		return 0, false
+	}
+	return free - uploadDiskFloor, true
 }
