@@ -1238,12 +1238,15 @@ var worker_default = {
         date: current.date,
       }, headers);
     }
-    if (pathname.startsWith("/go/testflight/")) {
+    // The Mac App Store listing. Counted in ordinary Worker analytics like the
+    // other /go/ paths. Old /go/testflight/ links now land on the Store too:
+    // the invitation-only beta is over.
+    if (pathname.startsWith("/go/appstore/") || pathname.startsWith("/go/testflight/")) {
       if (request.method !== "GET" && request.method !== "HEAD") return methodNotAllowed("GET, HEAD");
       return new Response(null, {
         status: 302,
         headers: {
-          location: "/#get",
+          location: "https://apps.apple.com/app/id6794880742",
           "cache-control": "no-store",
           "referrer-policy": "no-referrer",
         },

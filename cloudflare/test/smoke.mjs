@@ -133,7 +133,7 @@ test("read-only public routes reject mutating methods before storage", async () 
   for (const path of [
     "/", "/privacy", "/support", "/api/version", "/api/relay-canary",
     "/.well-known/apple-developer-domain-association.txt", "/appcast.xml",
-    "/go/testflight/test", "/go/github/test",
+    "/go/testflight/test", "/go/appstore/test", "/go/github/test",
   ]) {
     const response = await worker.fetch(new Request(`https://partyparty.party${path}`, {
       method: "POST",
@@ -701,7 +701,8 @@ test("the product hero links to the public source repository", async () => {
 test("launch CTAs use measurable first-party redirects", async () => {
   const env = baseEnv();
   const cases = [
-    ["/go/testflight/hero", "/#get"],
+    ["/go/appstore/hero", "https://apps.apple.com/app/id6794880742"],
+    ["/go/testflight/hero", "https://apps.apple.com/app/id6794880742"],
     ["/go/github/hero", "https://github.com/tetrisgm/partyparty"],
   ];
   for (const [path, destination] of cases) {
@@ -824,6 +825,18 @@ test("relay liveness asks about the room, not about the origin process", async (
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+test("download CTAs lead to the Mac App Store listing", async () => {
+  const env = baseEnv();
+  for (const path of ["/go/appstore/hero", "/go/testflight/old-link"]) {
+    const r = await worker.fetch(new Request("https://partyparty.party" + path), env);
+    assert.equal(r.status, 302, path);
+    assert.equal(r.headers.get("location"), "https://apps.apple.com/app/id6794880742", path);
+  }
+  const html = readFileSync(new URL("../../site/index.html", import.meta.url), "utf8");
+  assert.match(html, /href="\/go\/appstore\/hero"/);
+  assert.doesNotMatch(html, /id="inviteForm"/);
 });
 
 // This line used to read `console.log(`PASS ${tests.length} ...`)` and nothing
