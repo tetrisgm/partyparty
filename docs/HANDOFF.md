@@ -31,7 +31,7 @@ https://apps.apple.com/us/app/partyparty-dj-wi-fi-radio/id6794880742.
 Build 276 predates the guest-surface hardening and EXIF stripping
 (`1a36028`, `5b6a771`); those need the next build. `asc review doctor`
 flags for next version: empty What's New, keywords repeating name/subtitle
-terms. The site and `AGENTS.md` still describe invitation-only distribution.
+terms. Site now links the Store via `/go/appstore/*` (Worker `1a586862`; old `/go/testflight/*` links redirect there too). `AGENTS.md` still says invitation-only; changing it is the owner's call.
 
 2026-09-16: Synchronization work is in [synchronization.md](synchronization.md).
 Source/relay clock calibration and shared startup/recovery now target two seconds
