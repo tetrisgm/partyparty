@@ -36,6 +36,12 @@ phone, speaker, autoplay, and lock-screen validation remain open.
 
 2026-09-13: Instruction-only cleanup; application behavior unchanged. Earlier notes are preserved verbatim in [HANDOFF-history-2026-09-13.md](HANDOFF-history-2026-09-13.md). Read the relevant section when resuming its topic; historical release/status claims need revalidation.
 
+Accepted by design (owner, 2026-10-14): every install can fetch the shared
+`*.party.partyparty.party` key from the broker. That is what lets a Mac serve
+valid HTTPS at an offline party on a plain router. Do not gate or remove
+`/api/broker/wildcard-cert`; the [audit](HANDOFF-history-2026-09-13.md#guest-surface-audit-2026-09-11)
+analysis is the known cost, not a work item.
+
 ## Recent recorded checkpoints
 
 - [Owner release direction (2026-09-12)](HANDOFF-history-2026-09-13.md#owner-release-direction-2026-09-12)
