@@ -7,7 +7,7 @@ Mac menu-bar party server; guests use HTTPS LL-HLS and the active-room feed.
 - Relay prioritizes `/live/`; photos use a capped/throttled secondary path, videos never relay. Direct mode retains full media.
 - Visual reference is shipped CSS in `web/listener.html`, not a design document: Geist, `#ff2d55`, warm grey, white cards, soft depth, weight-800 pill buttons. Change that source first.
 - Upload/release only when the owner asks, never to debug or because code is ready. No automatic build/publish/deploy/reinstall jobs or commit triggers.
-- TestFlight is invitation-only; the public site collects `/api/waitlist` addresses (admin-key reads), with no download. Mac App Store is active. Preserve the dormant Sparkle channel, `scripts/ship-standalone.sh`, appcast, and versioned R2 downloads; run only when asked.
+- Distribution is the Mac App Store (live since 125.51, 2026-10-14); site CTAs use `/go/appstore/*`. TestFlight is for testers only. Keep `/api/waitlist` and its stored addresses (admin-key reads), though the site no longer collects them. Preserve the dormant Sparkle channel, `scripts/ship-standalone.sh`, appcast, and versioned R2 downloads; run only when asked.
 - Pro is subscription-only. Never restore `fm.partyparty.app.pro.lifetime` or another one-off unlock.
 - Before Apple review, packaging, or upload work, read `docs/APPLE-RELEASE.md`.
 - No GitHub Actions workflows, secrets, or runners.
