@@ -42,6 +42,14 @@ valid HTTPS at an offline party on a plain router. Do not gate or remove
 `/api/broker/wildcard-cert`; the [audit](HANDOFF-history-2026-09-13.md#guest-surface-audit-2026-09-11)
 analysis is the known cost, not a work item.
 
+2026-10-14: guest-surface hardening `1a36028` (not yet in a shipped build):
+deleted/hidden post media no longer served, guest-profile rate limit + roster cap
++ atomic save, journal fsync, 2 GiB free-disk floor for uploads (no file-size
+cap), party-salted guest handles instead of raw cids on `/api/peer`. Still open
+from the [audit](HANDOFF-history-2026-09-13.md#guest-surface-audit-2026-09-11):
+EXIF/GPS on guest photos, unauthenticated Bonjour peers, relay-side guest rate
+limiting at the origin.
+
 ## Recent recorded checkpoints
 
 - [Owner release direction (2026-09-12)](HANDOFF-history-2026-09-13.md#owner-release-direction-2026-09-12)
