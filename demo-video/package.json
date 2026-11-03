@@ -6,7 +6,7 @@
     "preview": "remotion studio src/index.ts"
   },
   "dependencies": {
-    "@remotion/cli": "4.0.520",
+    "@remotion/cli": "4.0.540",
     "@remotion/google-fonts": "4.0.520",
     "react": "19.1.1",
     "react-dom": "19.1.1",
